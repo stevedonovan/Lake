@@ -1,0 +1,3 @@
+LIBRARY lib1.dll
+EXPORTS
+	answer

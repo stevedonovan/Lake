@@ -1,0 +1,5 @@
+cpp.defaults = {defines = 'SIMPLE',libs=choose(WINDOWS,'user32')}
+cf = c.group{'c',src='cfile c/clib',incdir='c cpp'}
+cppf = cpp.group{'cpp',src='cppfile',incdir='c cpp'}
+cpp.program{'bonzo',rules={cf,cppf}}
+

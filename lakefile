@@ -1,0 +1,11 @@
+WHAT=arg[1]
+for d in dirs 'examples' do
+  lake(d,WHAT)
+end
+if WHAT=='clean' then -- let's be really thorough
+  for pat in list {'.spec','.d','.o','.obj'} do
+    remove(expand_args('*',pat,true))
+  end
+end
+
+

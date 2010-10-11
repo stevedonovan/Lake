@@ -1,0 +1,3 @@
+lib = c.shared {'lib1'}
+c.program{'needs-lib1',lib}
+

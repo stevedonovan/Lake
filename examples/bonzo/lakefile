@@ -1,0 +1,8 @@
+-- including deps directly!
+cpp.defaults = {defines = 'SIMPLE',libs = choose(WINDOWS,'user32')}
+cpp.program {'bonzo',rules='deps.mak'}
+
+
+
+
+

@@ -1,0 +1,1 @@
+c.program{'first',incdir='includes',src='one,two',odir=true,needs = 'math',optimize=false}

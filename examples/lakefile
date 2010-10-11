@@ -1,0 +1,1 @@
+c.shared{'mylib',lua=true,base='lua'}

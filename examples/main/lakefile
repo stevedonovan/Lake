@@ -1,0 +1,3 @@
+main = cpp.group{'main'}
+lib = c.group{'lib'}
+t = cpp.program{'main',inputs={main,lib}}

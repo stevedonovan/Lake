@@ -1,0 +1,6 @@
+-- maintaining separate release & debug builds
+PROG={'main',src='../hello',odir=true}
+release = c.program(PROG)
+set_flags {DEBUG=true}
+debug = c.program(PROG)
+default{release,debug}

@@ -1,0 +1,18 @@
+
+if not NO_FILTER then
+	if CC ~= 'gcc' then quit 'this filter is g++ specific' end
+	
+	output_filter(cpp,function(line)
+	  return line:gsub('std::',''):
+		gsub('basic_string%b<>','string'):
+		gsub(',%s+allocator%b<>',''):
+		gsub('class ',''):gsub('struct ',''):
+		gsub('basic_ostream%b<>','ostream'):
+		gsub('basic_streambuf%b<>','streambuf'):
+		gsub('basic_ios%b<>','ios'):
+		gsub('%[with[^%]]+%]',''):
+		gsub('^.-: note: [^c]','')
+	end)
+end
+
+cpp.program {'errors'}

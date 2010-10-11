@@ -1,0 +1,1 @@
+cpp.program {'main',src='hello',ext='.cxx'}

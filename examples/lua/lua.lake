@@ -1,0 +1,29 @@
+LUA='lua'
+LUAC='luac print'
+as_dll = WINDOWS
+if as_dll then
+  defs = 'LUA_BUILD_AS_DLL'
+end
+if not WINDOWS then
+  defs = 'LUA_USE_LINUX'
+end
+
+-- build the static library
+lib,ll=c.library{'lua',src='*',exclude={LUA,LUAC},defines=defs}
+
+-- build the shared library
+if as_dll then
+  libl = c.shared{'lua',rules=ll,dynamic=true}
+else
+  libl = lib
+end
+
+-- build the executables
+lua = c.program{'lua',libl,src=LUA,needs='dl math readline',export=not as_dll}
+luac = c.program{'luac',lib,src=LUAC,needs='math'}
+
+default {lua,luac}
+
+
+
+

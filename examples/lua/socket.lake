@@ -1,0 +1,13 @@
+COMMON='timeout buffer auxiliar options io'
+COMMON = COMMON..' '..choose(WINDOWS,'wsocket','usocket')
+SCORE=COMMON..' luasocket inet tcp udp except select'
+
+score = c.shared {'socket/core',lua=true,needs='sockets',src=SCORE}
+smime = c.shared {'socket/mime',lua=true,src='mime'}
+
+if not WINDOWS then
+    sunix = c.shared {'sunix',lua=true,src=COMMON..' timeout unix'}
+end
+
+default{score,smime,sunix}
+
