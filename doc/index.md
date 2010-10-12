@@ -2,7 +2,7 @@
 
 `lake` is a build engine written in Lua, similar to Ruby's [rake](http://rake.rubyforge.org/). It is not a makefile generator, but evaluates dependencies directly - that is, it is an interpreter of dependency rules, not a makefile compiler.  This is a sensible design decision because `lake` is small (about 50K pure Lua, 250K together with Lua and LuaFileSystem) enough to carry around.
 
-Much of the inspiration for `lake` comes from Martin Fowler's article on [dependency-driven programming](martinfowler.com/articles/rake.html) in `rake`.
+Much of the inspiration for `lake` comes from Martin Fowler's article on [dependency-driven programming](http://martinfowler.com/articles/rake.html) in `rake`.
 
 Naturally, this is not a new idea in the Lua universe. [PrimeMover](http://primemover.sourceforge.net/) is similar in concept. There are a number of Lua-to-makefile generators, like [premake](premake.sourceforge.net/projects/) and [hamster](http://luaforge.net/projects/hamster/) - the former can also generate SCons output.
 
@@ -583,7 +583,7 @@ There is a subsitution function which replaces any global variables, unless they
 
 ## Future Directions
 
-'PrimeMover' can operate as a completely self-contained package, with embedded Lua interpreter. This would be a useful thing to emulate.
+`PrimeMover` can operate as a completely self-contained package, with embedded Lua interpreter. This would be a useful thing to emulate.
 
 There is a need for a compact dependency-driven programming framework in Lua; see for instance this [stackoverflow](http://stackoverflow.com/questions/882764/embedding-rake-in-a-c-app-or-is-there-a-lake-for-lua) question.  A refactoring of `lake` would make it easier to include only this functionality as a library.  The general cross-platform utilities could be extracted and perhaps contribute to a [proposed project](http://github.com/lua-shellscript/lua-shellscript)
  for a general scripting support library.
