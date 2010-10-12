@@ -1,13 +1,15 @@
-
 ## Why Yet Another Build Engine?
 
-`lake` is a build engine written in Lua, similar to Ruby's `rake`. It is not a makefile generator, but evaluates dependencies directly - that is, it is an interpreter of dependency rules, not a makefile compiler.  This is a sensible design decision because `lake` is small (about 50K pure Lua, 250K together with Lua and LuaFileSystem) enough to carry around.
+`lake` is a build engine written in Lua, similar to Ruby's [rake](http://rake.rubyforge.org/). It is not a makefile generator, but evaluates dependencies directly - that is, it is an interpreter of dependency rules, not a makefile compiler.  This is a sensible design decision because `lake` is small (about 50K pure Lua, 250K together with Lua and LuaFileSystem) enough to carry around.
+
+Much of the inspiration for `lake` comes from Martin Fowler's article on [dependency-driven programming](martinfowler.com/articles/rake.html) in `rake`.
+
+Naturally, this is not a new idea in the Lua universe. [PrimeMover](http://primemover.sourceforge.net/) is similar in concept. There are a number of Lua-to-makefile generators, like [premake](premake.sourceforge.net/projects/) and [hamster](http://luaforge.net/projects/hamster/) - the former can also generate SCons output.
 
 Apart from being quick & compact, these are the features of interest:
 
    - it is an embedded DSL (Domain Specific Language) - all the normal functionality of Lua is available
    - it knows about both `GCC` and Microsoft Visual C++ compilers, and does cross-platform builds
-   - it knows about building Lua extensions in C or C++
    - it knows about building Lua extensions in C or C++
 
 ## `lake` as a Compiler Front-end
@@ -578,4 +580,18 @@ There is a subsitution function which replaces any global variables, unless they
     ok
     > return  subst('$(FRED) $(DEBUG)',{DEBUG=true})
     ok $(DEBUG)
+
+## Future Directions
+
+'PrimeMover' can operate as a completely self-contained package, with embedded Lua interpreter. This would be a useful thing to emulate.
+
+There is a need for a compact dependency-driven programming framework in Lua; see for instance this [stackoverflow](http://stackoverflow.com/questions/882764/embedding-rake-in-a-c-app-or-is-there-a-lake-for-lua) question.  A refactoring of `lake` would make it easier to include only this functionality as a library.  The general cross-platform utilities could be extracted and perhaps contribute to a [proposed project](http://github.com/lua-shellscript/lua-shellscript)
+ for a general scripting support library.
+
+I've done some experiments in using `rake` to build complex Java projects, which I will include as due course as optional modules (any rakefile can use `require` to load extra functionality.)
+
+Dependency-driven programming goes beyond operations on files. A more general framework would work with any set of objects which supported a property which behaved like a timestamp.  
+
+This style is also a good fit for parallel operations, since the exact order of dependency rule firing is not important. Integrating [Lua Lanes](http://kotisivu.dnainternet.net/askok/bin/lanes/index.html) would allow `lake` to efficiently use multiple cores, not only like `make -j` but any time-consuming tasks that need to be scheduled.
+
 
