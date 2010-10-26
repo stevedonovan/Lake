@@ -1490,7 +1490,11 @@ function set_flags(parms)
         LIB_PREFIX='lib'
         LIB_EXT='.a'
         SUBSYSTEM = '-Xlinker --subsystem -Xlinker  '  -- for mingw with Windows GUI
-        C_EXE_EXPORT = ' -Wl,-E'
+        if PLAT ~= 'Darwin' then
+            C_EXE_EXPORT = ' -Wl,-E'
+        else
+            C_EXE_EXPORT = ''
+        end
         C_STRIP = ' -Wl,-s'
         C_LIBSTATIC = ' -static'
         c.uses_dfile = 'slash'
