@@ -1156,11 +1156,13 @@ function process_args()
     -- this var is set by Lua for Windows
     LUA_DEV = env 'LUA_DEV'
     -- @doc [config] try load lakeconfig in the current directory
-    if exists 'lakeconfig' then
-        safe_dofile 'lakeconfig'
+    local lakeconfig = exists 'lakeconfig' or exists 'lakeconfig.lua'
+    if lakeconfig then
+        safe_dofile (lakeconfig)
     end
     -- @doc [config] also try load ~/.lake/config
-    local lconfig = exists(expanduser('~/.lake/config'))
+    local home = expanduser '~/.lake'
+    local lconfig = exists(home,'config') or exists(home,'config.lua')
     if lconfig then safe_dofile(lconfig) end
     if not PLAT then
         if not WINDOWS then
@@ -1247,9 +1249,13 @@ function process_args()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
     if arg[0] == 'lake.lua' or arg[0]:find '[/\\]lake%.lua$' then
         if use_lakefile then
+            local orig_lakefile = lakefile
             lakefile = lakefile or 'lakefile'
             if not exists(lakefile) then
-                quit("'%s' does not exist",lakefile)
+                lakefile = 'lakefile.lua'
+                if not exists(lakefile) then
+                    quit("'%s' does not exist",orig_lakefile or 'lakefile')
+                end
             end
             specfile = lakefile..'.spec'
             specfile = io.open(specfile,'r')
