@@ -18,7 +18,7 @@ local usage = [[
     -lua FILE build a Lua binary extension
 ]]
 
-require 'lfs'
+local lfs = require 'lfs'
 local append = table.insert
 local verbose = false
 local specific_targets = {}
