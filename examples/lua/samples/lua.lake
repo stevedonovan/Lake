@@ -1,5 +1,7 @@
 LUA='lua'
 LUAC='luac print'
+VERSION='52'
+LUALIB='lua'..VERSION
 as_dll = WINDOWS
 if as_dll then
   defs = 'LUA_BUILD_AS_DLL'
@@ -9,11 +11,11 @@ if not WINDOWS then
 end
 
 -- build the static library
-lib,ll=c.library{'lua',src='*',exclude={LUA,LUAC},defines=defs}
+lib,ll=c.library{LUALIB,src='*',exclude={LUA,LUAC},defines=defs}
 
 -- build the shared library
 if as_dll then
-  libl = c.shared{'lua',rules=ll,dynamic=true}
+  libl = c.shared{LUALIB,rules=ll,dynamic=true}
 else
   libl = lib
 end

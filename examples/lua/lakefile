@@ -1,1 +1,13 @@
-c.shared{'mylib',lua=true}
+mylib = c.shared{'mylib',needs='lua'}
+
+lt = rule('.lua','.output','lua $(INPUT) > $(TARGET)')
+
+lt ('test/*',mylib)
+
+target.tests {
+  action(utils.remove, '*.output'),
+  lt
+ }
+
+default{mylib,lt}
+
