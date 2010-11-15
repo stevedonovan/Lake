@@ -366,7 +366,7 @@ This simple lakefile does dependency checking; if a source file changes, then it
 
 Actually, `lake` goes further than this. Both `one.c` and `two.c` depend on `common.h`; if you modify this common dependency, then both source files are rebuilt.
 
-![main dependencies](main.png)
+![main dependencies](http://github.com/stevedonovan/Lake/raw/master/doc/main.png)
 
 `lake` knows about the `GCC` `-MMD` flag, which generates a file containing the non-system header files encountered during compilation:
 
@@ -767,7 +767,7 @@ Now, maybe there is also a requirement that tests can always be run directly usi
 
 Depending on an unconditional action does the job. (However, this is not entirely satisfactory, since in an ideal world the order of dependencies being resolved should not matter, but this will do for now.)
 
-![mydir and test dependencies](one.png)
+![mydir and test dependencies](http://github.com/stevedonovan/Lake/raw/master/doc/one.png)
 
 ### Command-line Flags
 
