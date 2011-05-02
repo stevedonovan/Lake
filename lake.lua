@@ -2082,6 +2082,7 @@ function update_lua_flags (ptype,args)
             local lua_path = utils.which(arg[-1])  -- usually lua, could be lua51, etc!
             if not lua_path then quit ("cannot find Lua on your path") end
             local path = dirname(lua_path)
+            LUA_DLL = exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
             LUA_INCLUDE_DIR = exists(path,'include') or exists(path,'..\\include')
             if not LUA_INCLUDE_DIR then quit ("cannot find Lua include directory") end
             LUA_LIB_DIR = exists(path,'lib') or exists(path,'..\\lib')
@@ -2107,9 +2108,8 @@ function update_lua_flags (ptype,args)
     local use_import_lib = LUA_LIB_DIR
     if WINDOWS then
         -- recommended practice for MinGW is to link directly against the DLL
-        print(CC,using_LfW)
         if CC=='gcc' and not using_LfW then
-            args.libflags = LUA_LIB_DIR..DIRSEP..LUA_LIBS..'.dll'
+            args.libflags = LUA_DLL
             use_import_lib = false
         else
             args.libs = concat_str(args.libs,LUA_LIBS)
