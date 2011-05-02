@@ -1,6 +1,5 @@
 mylib = c.shared{'mylib',needs='lua'}
-
-lt = rule('.lua','.output','lua $(INPUT) > $(TARGET)')
+lt = rule('.lua','.output',LUA_EXE..' $(INPUT) > $(TARGET)')
 
 lt ('test/*',mylib)
 

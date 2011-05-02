@@ -1345,6 +1345,7 @@ local function process_args()
     local function exists_lua(name) return exists(name) or exists(name..'.lua') end
     -- this var is set by Lua for Windows
     LUA_DEV = env 'LUA_DEV'
+    LUA_EXE = arg[-1]
     -- @doc [config] also try load ~/.lake/config
     local home = expanduser '~/.lake'
     local lconfig = exists_lua(join(home,'config'))
@@ -2067,6 +2068,10 @@ end
 
 local using_LfW
 
+local function find_lua_dll (path)
+    return exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
+end
+
 function update_lua_flags (ptype,args)
     if not LUA_LIBS then
         LUA_LIBS = 'lua5.1'
@@ -2078,11 +2083,14 @@ function update_lua_flags (ptype,args)
             lr_cfg = luarocks.cfg
             LUA_INCLUDE_DIR = lr_cfg.variables.LUA_INCDIR
             LUA_LIB_DIR = lr_cfg.variables.LUA_LIBDIR
+            if WINDOWS then
+                LUA_DLL = find_lua_dll(lr_cfg.variables.LUAROCKS_PREFIX..'/2.0')
+            end
         elseif WINDOWS then -- no standard place, have to deduce this ourselves!
-            local lua_path = utils.which(arg[-1])  -- usually lua, could be lua51, etc!
+            local lua_path = utils.which(LUA_EXE)  -- usually lua, could be lua51, etc!
             if not lua_path then quit ("cannot find Lua on your path") end
             local path = dirname(lua_path)
-            LUA_DLL = exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
+            LUA_DLL = find_lua_dll(path)
             LUA_INCLUDE_DIR = exists(path,'include') or exists(path,'..\\include')
             if not LUA_INCLUDE_DIR then quit ("cannot find Lua include directory") end
             LUA_LIB_DIR = exists(path,'lib') or exists(path,'..\\lib')
