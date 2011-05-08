@@ -18,6 +18,7 @@ Lake version 1.1  A Lua-based Build Engine
     -e EXPR evaluate an expression
     -l FILE build a shared library/DLL
     -p FILE build a program
+    -w write out unsatisfied needs to lakeconfig.lua
     -lua FILE build a Lua binary extension
   -assigmnents: arguments of the form VAR=STRING assign the string
          to the global VAR
@@ -1343,6 +1344,7 @@ local unsatisfied_needs = {}
 local function process_args()
     -- arg is not set in interactive lua!
     if arg == nil then return end
+    local write_needs
     local function exists_lua(name) return exists(name) or exists(name..'.lua') end
     LUA_EXE = arg[-1]
     -- @doc [config] also try load ~/.lake/config
@@ -1388,6 +1390,8 @@ local function process_args()
                 os.exit(0)
             elseif opt == 't' then
                 TESTING = true
+            elseif opt == 'w' then
+                write_needs = true
             elseif opt == 'n' then
                 no_synth_target = true
             elseif opt == 'f' then
@@ -1453,7 +1457,18 @@ local function process_args()
             safe_dofile(lakefile)
         end
         if next(unsatisfied_needs) then
-            quit "unsatisfied needs"
+            local out = write_needs and io.open('lakeconfig.lua','w') or io.stdout
+            for package,vars in pairs(unsatisfied_needs) do
+                out:write(('--- variables for package %s\n'):format(package))
+                for _,v in ipairs(vars) do out:write(v,'\n') end
+                out:write('----\n')
+            end
+            local msg = "unsatisfied needs"
+            if write_needs then
+                out:close()
+                msg = msg..": see lakeconfig.lua"
+            end
+            quit (msg)
         end
         go()
         finalize()
@@ -1927,10 +1942,9 @@ local function examine_config_vars(package)
         default = default or 'NIL'
         if none or nodir then
             if not unsatisfied_needs[package] then
-                print(('--- variables for package %s'):format(package))
-                unsatisfied_needs[package] = true
+                unsatisfied_needs[package] = {}
             end
-            print(("%s = '%s' --> %s!"):format(var,val or default,none and 'please set' or 'not a dir'))
+            append(unsatisfied_needs[package],("%s = '%s' --> %s!"):format(var,val or default,none and 'please set' or 'not a dir'))
             return false
         end
         return true
