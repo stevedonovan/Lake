@@ -230,6 +230,7 @@ end
 --  s = concat_str(s,"hello")
 local function concat_str (v,u,no_quote)
     if not no_quote then u = quote_if_necessary(u) end
+    if type(v) == 'table' then v = table.concat(v,' ') end
     return (v or '')..' '..u
 end
 
@@ -1343,8 +1344,6 @@ local function process_args()
     -- arg is not set in interactive lua!
     if arg == nil then return end
     local function exists_lua(name) return exists(name) or exists(name..'.lua') end
-    -- this var is set by Lua for Windows
-    LUA_DEV = env 'LUA_DEV'
     LUA_EXE = arg[-1]
     -- @doc [config] also try load ~/.lake/config
     local home = expanduser '~/.lake'
@@ -1849,7 +1848,7 @@ end
 
 local function check_c99 (lang)
     if lang == c99 and CC == 'cl' then
-        quit("C99 is not supported by CL")
+        quit("C99 is not supported by MSVC compiler")
     end
 end
 
@@ -1904,6 +1903,8 @@ function find_include (f)
        -- ??? no way to tell ???
     end
 end
+
+------------ Handling needs ------------
 
 local extra_needs = {}
 
@@ -2019,7 +2020,7 @@ local function update_needs(ptype,args)
         if extra_needs[need] then
             local res = extra_needs[need]()
             append_to_field(args,'libs',res.libs)
-            append_to_field(args,'incdir',res.incdir)
+            append_to_field(args,'incdir',res.incdir) -- ?? might be multiple!
             append_to_field(args,'defines',res.defines)
             append_to_field(args,'libdir',res.libdir)
             if res.libflags then args.libflags = concat_str(args.libflags,res.libflags,true) end
@@ -2076,7 +2077,8 @@ function update_lua_flags (ptype,args)
     if not LUA_LIBS then
         LUA_LIBS = 'lua5.1'
     end
-    using_LfW = LUA_DEV
+    -- this var is set by Lua for Windows
+    using_LfW = env 'LUA_DEV'
     if LUA_INCLUDE_DIR == nil then
         -- if LuaRocks is available, we ask it where the Lua headers are found...
         if not IGNORE_LUAROCKS and not lr_cfg and pcall(require,'luarocks.cfg') then
@@ -2134,6 +2136,8 @@ function update_lua_flags (ptype,args)
         args.libdir = concat_str(args.libdir,LUA_LIB_DIR)
     end
 end
+
+----- end of handling needs -----------
 
 
 local program_fields = {
@@ -2323,7 +2327,17 @@ local function _program(ptype,name,deps,lang)
             if post then link_str = link_str..' && '..post end
         end
         local target = tname
-        if odir then target = join(odir,target) end
+
+        -- @doc [target,odir] if the target looks like 'dir/name' then
+        -- we make sure that 'dir' does exist. Otherwise, if `odir` exists it
+        -- will be prepended.
+        local tpath,tname = splitpath(target)
+        if tname == '' then quit("target name cannot be empty, or a directory") end
+        if tpath == '' then
+            if odir then target = join(odir,target) end
+        else
+            lfs.mkdir(tpath)
+        end
 
         t = new_target(target,dependencies,link_str,true)
         t.name = name
