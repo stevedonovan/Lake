@@ -202,6 +202,7 @@ path.exists = exists
 
 -- is @path a directory?
 local function isdir(path)
+    if path:match '/$' then path = path:sub(1,-2) end
     return attributes(path,'mode') == 'directory'
 end
 path.isdir = isdir
@@ -691,7 +692,9 @@ function utils.which (prog)
         end
         return false
     else
-        return shell('which %s 2> /dev/null',prog)
+        local res = shell('which %s 2> /dev/null',prog)
+        if res == '' then return false end
+        return res
     end
 end
 
@@ -1954,13 +1957,13 @@ local function examine_config_vars(package)
         if checkdir(dir,dir_v) then
             if not incdir then incdir = join(dir,'include') end
             if not libdir then libdir = join(dir,'lib') end
+            if not libs then libs = package end
         end
     end
     checkdir(incdir,incdir_v)
     -- generally you will always need a libdir for Windows; otherwise only check if specified
     if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
     checkdir(libs,libs_v,package)
-    libs = libs or package
     return {incdir = incdir, libdir = libdir, libs = libs}
 end
 
@@ -1976,7 +1979,7 @@ function lake.define_pkg_need (name,package)
          local null = " 2>&1 >"..choose(WINDOWS,'NUL','/dev/null')
         if not alias then package = name end
         if pkg_config_present == nil then
-            pkg_config_present = os.execute('pkg-config --version'..null) == 0
+            pkg_config_present = utils.which 'pkg-config'
         end
         if alias and not pkg_config_present then
             quit("package "..package.." requires pkg-config on the path")
@@ -1993,11 +1996,30 @@ function lake.define_pkg_need (name,package)
                 return {libflags=glibs,flags=gflags}
             end
         end
-        if not knows_package then
-            return examine_config_vars(package)
-        end
     end)
+end
 
+-- @doc [needs] unknown needs searched in this order:
+-- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then      pkg-config
+
+local function handle_unknown_need (name)
+    define_need(name,function()
+        local ok,needs,nfun
+        local pack,sub = split2(name,'%-')
+        ok,nfun = pcall(require,'lake.needs.'..(sub or name))
+        if ok then
+            return nfun(sub)
+        end
+        needs = examine_config_vars(name)
+        if not needs then
+            lake.define_pkg_need(name)
+            needs = extra_needs[name]()
+            if needs then
+                unsatisfied_needs[name] = nil
+            end
+        end
+        return needs
+    end)
 end
 
 local function append_to_field (t,name,arg)
@@ -2028,17 +2050,18 @@ local function update_needs(ptype,args)
     local libs,incdir = {},{}
     for need in list_(needs) do
         if not extra_needs[need] and not builtin_needs[need] then
-            -- @doc [needs] unknown needs are assumed to be known by pkg-config
-            lake.define_pkg_need(need)
+            handle_unknown_need(need)
         end
         if extra_needs[need] then
             local res = extra_needs[need]()
-            append_to_field(args,'libs',res.libs)
-            append_to_field(args,'incdir',res.incdir) -- ?? might be multiple!
-            append_to_field(args,'defines',res.defines)
-            append_to_field(args,'libdir',res.libdir)
-            if res.libflags then args.libflags = concat_str(args.libflags,res.libflags,true) end
-            if res.flags then args.flags = concat_str(args.flags,res.flags,true) end
+            if res then
+                append_to_field(args,'libs',res.libs)
+                append_to_field(args,'incdir',res.incdir) -- ?? might be multiple!
+                append_to_field(args,'defines',res.defines)
+                append_to_field(args,'libdir',res.libdir)
+                if res.libflags then args.libflags = concat_str(args.libflags,res.libflags,true) end
+                if res.flags then args.flags = concat_str(args.flags,res.flags,true) end
+            end
         else
             if need == 'lua' then
                 update_lua_flags(ptype,args)
@@ -2357,6 +2380,7 @@ local function _program(ptype,name,deps,lang)
         t.name = name
         t.libs = libs
         t.link = lang
+        t.input = name..lang.obj_ext
         t.lua = args.lua
         t.ptype = ptype
         cr.parent = t
