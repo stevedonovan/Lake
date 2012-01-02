@@ -1931,6 +1931,17 @@ function define_need (name,callback)
 end
 
 local function examine_config_vars(package)
+    -- @doc [needs] If we're trying to match a need 'frodo', then we
+    -- generate FRODO_INCLUDE_DIR, FRODO_LIB_DIR, FRODO_LIBS, FRODO_DIR
+    -- and look them up globally.  Not all of these are needed. For instance, if only
+    -- FRODO_DIR is specified then Lake will try FRODO_DIR/include and FRODO_DIR/lib,
+    -- and assume that the libname is simply frodo (unless FRODO_LIBS is also specfiied)
+    -- On Unix, a C/C++ need generally needs include and lib dirs, plus library name if
+    -- it isn't identical to the need name. However a lib dir is only essential for Windows,
+    -- which has no convenient system-wide lib directory.
+    --
+    -- If this check fails, then Lake can generate skeleton configuration files for
+    -- the needs.
     local upack = package:upper():gsub('%W','_')
     local incdir_v = upack..'_INCLUDE_DIR'
     local libdir_v = upack..'_LIB_DIR'
