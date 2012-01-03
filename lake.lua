@@ -1870,11 +1870,6 @@ function concat_arg(pre,arg,sep,base)
     return ' '..concat_list(pre,deps_arg(arg,base),sep)
 end
 
-local function check_c99 (lang)
-    if lang == c99 and CC == 'cl' then
-        quit("C99 is not supported by MSVC compiler")
-    end
-end
 
 local function _compile(name,compile_deps,lang)
     local args = (type(name)=='table') and name or {}
@@ -1882,7 +1877,13 @@ local function _compile(name,compile_deps,lang)
     if lang.init_flags then
         cflags = lang.init_flags(pick(args.debug,DEBUG), pick(args.optimize,OPTIMIZE), pick(args.strict,STRICT))
     end
-    check_c99(lang)
+    if lang == c99 and CC == 'cl' then
+        if args.compile_as_cpp then
+            cflags = cflags .. ' /TP'
+        else
+            quit("C99 is not supported by MSVC compiler: compile as C++")
+        end
+    end
 
     compile_deps = args.compile_deps or args.headers
     -- @doc 'defines' any preprocessor defines required
@@ -2221,6 +2222,7 @@ local program_fields = {
     debug=true, -- override global default set by -g or DEBUG variable
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
+    compile_as_cpp=true, -- compile C files as C++ (for MS cl compiler)
     base=true, -- base directory for source and includes
 }
 
@@ -2250,7 +2252,6 @@ end
 local function _program(ptype,name,deps,lang)
     local dependencies,src,except,cr,subsystem,args
     local libs = LIBS
-    check_c99(lang)
     if type(name) == 'string' then name = { name } end
     if type(name) == 'table' then
         args = name
