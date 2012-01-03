@@ -1,12 +1,21 @@
+-- building a little Lua C extension and testing it
+-- define the extension
 mylib = c.shared{'mylib',needs='lua'}
+
+-- define a rule that runs a Lua file and captures its output
 lt = rule('.lua','.output',LUA_EXE..' $(INPUT) > $(TARGET)')
 
+-- populate the rule with all Lua files in the test subdir
 lt ('test/*',mylib)
 
+-- define an explicit 'tests' target; _first_ remove the 
+-- output files so that the tests will run unconditionally.
 target.tests {
   action(utils.remove, '*.output'),
   lt
  }
 
+-- default target builds our lib and runs the tests
 default{mylib,lt}
+
 

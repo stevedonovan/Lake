@@ -285,6 +285,11 @@ local function mask(mask)
 end
 path.mask = mask
 
+local function is_mask (pat)
+    return pat:find ('*',1,true)
+end
+path.is_mask = is_mask
+
 local function dirs(dir)
     return list_(get_directories(dir))
 end
@@ -1349,7 +1354,7 @@ local function process_args()
     if arg == nil then return end
     local write_needs
     local function exists_lua(name) return exists(name) or exists(name..'.lua') end
-    LUA_EXE = arg[-1]
+    LUA_EXE = quote_if_necessary(arg[-1])
     -- @doc [config] also try load ~/.lake/config
     local home = expanduser '~/.lake'
     local lconfig = exists_lua(join(home,'config'))
@@ -2253,7 +2258,17 @@ local function _program(ptype,name,deps,lang)
         --- the name can be the first element of the args table
         name = args.name or args[1]
         deps = args.deps or tail(args)
-
+        --- if the name contains wildcards, then we make up a new unique target
+        --- that depends on all the files
+        if is_mask(name) then
+            local names = expand_args(name,args.ext or lang.ext,args.recurse,args.base)
+            targets = {}
+            for i,name in ipairs(names) do
+                args.name = splitext(name)
+                targets[i] = _program(ptype,args,'',lang)
+            end
+            return new_target(splitext(names[1]),targets,'',true)
+        end
         src = args.src
         except = args.exclude
         subsystem = args.subsystem

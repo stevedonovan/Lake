@@ -1,0 +1,7 @@
+default {
+  c.program {'*',
+      odir=true,recurse=true,needs='math'
+  },
+  cpp.program {'*',ext='.cxx'},
+}
+
