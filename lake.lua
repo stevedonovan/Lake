@@ -5,7 +5,7 @@
 -- Steve Donovan, 2007-2010
 
 local usage = [[
-Lake version 1.1  A Lua-based Build Engine
+Lake version 1.2  A Lua-based Build Engine
   lake <flags> <assigments> <target(s)>
   -Flags:
     -v verbose
@@ -1355,6 +1355,7 @@ local function process_args()
     local write_needs
     local function exists_lua(name) return exists(name) or exists(name..'.lua') end
     LUA_EXE = quote_if_necessary(arg[-1])
+    STRICT = true
     -- @doc [config] also try load ~/.lake/config
     local home = expanduser '~/.lake'
     local lconfig = exists_lua(join(home,'config'))
@@ -1692,8 +1693,8 @@ function lake.set_flags(parms)
         c.init_flags = function(debug,opt,strict)
             local flags = choose(debug,'-g',opt_flag('-',opt))
             if strict then
-                -- @doc 'strict compile' (-s) uses -pedantic -Wall for gcc; /WX for cl.
-                flags = flags .. ' -pedantic -Wall'
+                -- @doc 'strict compile' (-s) uses -Wall for gcc; /WX for cl.
+                flags = flags .. ' -Wall'
             end
             return flags
         end
@@ -2267,7 +2268,7 @@ local function _program(ptype,name,deps,lang)
                 args.name = splitext(name)
                 targets[i] = _program(ptype,args,'',lang)
             end
-            return new_target(splitext(names[1]),targets,'',true)
+            return phony(targets,'')
         end
         src = args.src
         except = args.exclude
