@@ -4,9 +4,9 @@
 
 ### Targets and Dependencies
 
-Building software and preparing websites both involve tools which take input files and convert them to output files.  For example, a task may involve resizing original images and converting Markdown files into HTML.  It's easy enough to write programs or scripts which explicitly apply the desired tool to given files, but this can involve extra work for the user and potentially much redundant processing by the computer.  Hundreds of images take a while to be processed, and it's irritating and unnecessary to do this everytime a new image is added.
+Building software and preparing websites both involve tools which take input files and convert them to output files.  For example, a task may involve resizing original images and converting Markdown files into HTML.  It's easy enough to write scripts which explicitly apply the desired tool to given files, but this can involve extra work for the user and potentially much redundant processing by the computer.  Hundreds of images take a while to be processed, and it's irritating and unnecessary to do this everytime a new image is added.
 
-You only want to convert files which have changed, and this is the role of `make` .  The output files are called the _targets_, and each target depends on one or more input files, which are called _prerequisites_ in `make` terminology, or simply _dependencies_ in `lake`.
+You only want to convert files which have changed, and this is the role of dependency-tracking tools like `make` .  The output files are called the _targets_, and each target depends on one or more input files, which are called _prerequisites_ in `make` terminology, or simply _dependencies_ in `lake`.
 
 Just as the instructions for `make` are contained inside _makefiles_, the equivalent files for `lake` are called _lakefiles_.  When `lake` is run without any parameters, it will look for `lakefile` or `lakefile.lua`.  Lakefiles are Lua scripts which can use the full power of the language, but typically a lakefile is organized around explicit targets and dependencies.
 
@@ -23,7 +23,7 @@ Given a called `lakefile` with this line, the `lake` command gives the following
     D:\dev\app>lake
     lake: up to date
 
-The copy command is only executed the first time, because after copying the file `sgm.bak` must be more recent than `sgm.c`.  `lake` will only re-copy `sgm.c` when it has changed, and becomes more recent than `sgm.bak` (or if `sgm.bak` has been deleted.)
+The copy command is only executed the first time, because after copying the file `sgm.bak` will be more recent than `sgm.c`.  `lake` will only re-copy `sgm.c` when it has changed, and becomes more recent than `sgm.bak` (or if `sgm.bak` has been deleted.)
 
 The command argument contains the variables `DEPENDS` and `TARGET` which will be replaced by their actual values when the target is generated. In this case, you could use the explicit names, but it's better to only have to mention the names once. It's then possible to make a number of similar target actions:
 
@@ -38,9 +38,9 @@ This will not work as expected. `lake` cannot guess what all the targets are and
     target('sgm.bak','sgm.c',ccmd)
     target('test.bak','test.c',ccmd)
 
-Here the second argument to target is now a list of files, and the third argument is not given, since this target isn't really a file and merely exists to ensure that the dependencies are checked.  So `lake` sees that 'all' requires both `sgm.back` and `test.bak `, and then examines their dependencies in turn. This is the central point to understand;  a target depends on other targets, which depend on others, and so on.  `lake` will follow the dependencies until it finds the files, or finds a rule that generates that file.
+Here the second argument to target is now a list of files, and the third argument is not given, since this target isn't really a file and merely exists to ensure that the dependencies are checked.  So `lake` sees that 'all' requires both `sgm.bak` and `test.bak `, and then examines their dependencies in turn. This is the central point to understand;  a target depends on other targets, which depend on others, and so on.  `lake` will follow the dependencies until it finds the files, or finds a rule that generates that file.
 
-Lists of files are common in `lake` and can be space/comma separated strings, or as tables. So the 'sgm.bak, test.bak' could also be written as `{'sgm.bak','test.bak'}`.
+Lists of files are common in `lake` and can be space/comma separated strings, or as tables. So the 'sgm.bak, test.bak' could also be written as 'sgm.bak test.bak' or `{'sgm.bak','test.bak'}`.
 
 A more `lake`-ish way of writing the same lakefile is:
 
@@ -63,13 +63,13 @@ Consider the problem of working with an arbitrary set of `.c` files. A programme
     end
     default (targets)
 
-Again, `default` takes a list of target objects, which have been explicitly generated in a loop over all files matching the file mask `*.c`.  `lake` provides functions like `mask` and `change_extension` to make working with files and directories easier (see [section]) but there is a more elegant way of solving the problem using `rule`:
+Again, `default` takes a list of target objects, which have been explicitly generated in a loop over all files matching the file mask `*.c`.  `lake` provides functions like `mask` and `change_extension` to make working with files and directories easier but there is a more elegant way of solving the problem using `rule`:
 
-    crule = rule('.c','.bak','cp $(INPUT) $(TARGET)')
+    crule = rule('.c','.bak','copy $(INPUT) $(TARGET)')
     crule '*.c'
     default (crule)
 
-A `lake` rule is constructed by `rule`, and the arguments are input extension, output extension, and command (as passed to `target`).  A rule object is a factory for creating targets, and it is callable; it can be passed a target name, or a file mask. 
+A `lake` rule is constructed by `rule`, and the arguments are input extension, output extension, and command (as passed to `target`).  A rule object is a factory for creating targets, and it is callable; it can be passed a target name, or a file mask.
 
 Note the `INPUT` variable; this is more specific than `DEPENDS` - generally a target may depend on many files, but the rule defines the input precisely as `NAME.in_ext`. This little lakefile shows the difference; here the target depends on two files, and `$(DEPENDS)` is always the dependencies separated by spaces.
 
@@ -94,16 +94,16 @@ As it stands, this rule is very platform-dependent. But a lakefile is just a Lua
     crule = rule('.c','.bak','$(COPY) $(INPUT) $(TARGET)')
     default (crule '*.c')
 
-There is an important different between an ordinary global like `COPY` and basic variables like `INPUT`. Basic variables are only substituted when the target action 'fires'; the initial set is `INPUT,TARGET,DEPENDS,LIBS,CFLAGS`. 
+There is an important different between an ordinary global like `COPY` and basic variables like `INPUT`. Basic variables are only substituted when the target action 'fires'; the initial set is `INPUT,TARGET,DEPENDS,LIBS,CFLAGS`.
 
 Another example is converting image files using [ImageMagick](http://www.imagemagick.org/), which provides `convert`, the Swiss Army Knife of file converters.
 
     to_png = rule('.jpg','.png',
-      'convert $(INPUT) $(TARGET)' 
+      'convert $(INPUT) $(TARGET)'
     )
-    
+
     default(to_png '*')
-    
+
 This lakefile will convert all the JPEG files in the current directory to PNG, and thereafter will only update PNG files if any of the JPEGs change.
 
 It is possible to construct a rule which can work on all extensions, but you do have to be careful that the target files are not in the same directory as the input files.
@@ -139,8 +139,8 @@ Up to now the action specified explicitly for a target or indirectly by a rule h
 Armed with this information, a simple source translation would look as follows:
 
     target('out.c','out.tmpl',function(t)
-        local tmpl = write.read (t.deps[1])
-        write.file(t.target,tmpl:format(os.date()))
+        local tmpl = file.read (t.deps[1])
+        file.write(t.target,tmpl:format(os.date()))
     end)
 
 Here a source file has been generated from a template, using a trivial transformation which replaces the first %s in the template with a timestamp. If you wanted `out.c` re-created for _every_ build, then specify `nil` for the dependencies and use 'out.tmpl' instead of `t.deps[1]`.
@@ -154,7 +154,7 @@ There is some syntactical sugar for some common target usages. `target.fred 'one
 
 `action` is an alias for creating _unconditional_ targets where the action is always a function.
 
-Another application is _rule-based programming_.
+An application of function actions is _rule-based programming_.
 
 Martin Fowler has an [article](http://martinfowler.com/articles/rake.html) on using Rake for managing tasks with  dependencies.  Here is his first rakefile:
 
@@ -230,11 +230,11 @@ An interesting aspect of this style of programming is that the order of the depe
 
 ### How `lake` is Configured
 
-The command `lake` will load configuration files, if it can find them. It will first try load `~/.lake/config` as a Lua script. (In Windows, `~` means something like `/Users/Name`)  It will then try to load `lakeconfig` in the current directory, so that local configuration takes precedence. These files may have a `.lua` extension.
+The command `lake` will load configuration files, if it can find them. It will first try load `~/.lake/config` as a Lua script. (In Windows, `~` means something like `c:\Users\Name`)  It will then try to load `lakeconfig` in the current directory, so that local configuration takes precedence. These files may have a `.lua` extension.
 
-You can then define `crule` in the user or local configuration file and use it as prepackaged functionality.
+You can then define custom in the user or local configuration file and use it as prepackaged functionality.
 
-(You can also use `require` to bring in Lake configuration files from the usual Lua package path - this is the recommended way to configure `lake` for all users. For instance, you can put `require 'lake.global` in `~/.lake/config`)
+(You can also use `require` to bring in Lake configuration files from the usual Lua package path - this is the recommended way to configure `lake` for all users. For instance, you can use `require 'lake.global`. For a Unix system this script would have a path like `/usr/local/share/lua/5.1/lake/global.lua`.)
 
 If there is an environment variable `LAKE_PARMS`, it is assumed to consist of variable-value pairs in the form `VAR=STRING` separated by semicolons; these set the global variable `VAR` to the value `STRING`.
 
@@ -287,7 +287,7 @@ Schematically, these tools work like this:
 
 Note that compilers often can compile multiple files in one invocation, which often improves build times.
 
-One of the things that `lake` can do for you is auto-generate dependency information using facilities provided by the compilers.  In this way, a complex build can be specified with a compact lakefile and you can expect the right thing to happen.
+One of the things that `lake` can do for you is auto-generate dependency information using facilities provided by the supported compilers.  In this way, a complex build can be specified with a compact lakefile and you can expect the right thing to happen.
 
 ### Building a Simple Program
 
@@ -305,7 +305,7 @@ This version has two source files specified explicitly.  The value of `src` foll
 
     c.program{'hello',src='*',exclude='test'}
 
-`exclude` uses the same rules as `src`, so you could exclude any source file that began with `test-`, etc.
+`exclude` uses the same rules as `src`, so you could exclude any source file that began with `test-` with a wilcard, etc.
 
 Often the language does not fully specify the extension. C++ files have a number of common extensions (including upper-case C). My preference is `.cpp`; but it's easy to override this with `ext`:
 
@@ -416,7 +416,7 @@ The Lua  need also applies to programs embedding Lua. It is recommended to link 
 
 Compiling and linking a target often requires platform-specific libraries. A Unix program needs `libm.a` if it wants to link to `fabs` and `sin` etc, but a Windows program does not.  We express this as the _need_ 'math' and let `lake` sort it out.
 
-Other common Unix needs are 'dl' if you want to load dynamic libraries directly using `dlopen`.  On the other side, Windows programs need to link against `wsock32` to do standard Berkerly-style sockets programming; the need 'sockets' expresses this portably.   The need 'readline' is superfluous on Windows, since the shell provides some of this functionality, and on Linux it also implies linking against `ncurses` and `history`; on OS X linking against `readline` is sufficient.
+Other common Unix needs are 'dl' if you want to load dynamic libraries directly using `dlopen`.  On the other side, Windows programs need to link against `wsock32` to do standard Berkerly-style sockets programming; the need 'sockets' expresses this portably.   The need 'readline' is superfluous on Windows, since the shell provides most of this functionality; on Linux it also implies linking against `ncurses` and `history`; on OS X linking against `readline` is sufficient.
 
 The built-in needs are currently: 'math','readline','dl','sockets' and 'lua'.
 
@@ -448,17 +448,38 @@ then we will get:
     FOO_INCLUDE_DIR = 'NIL' --> please set!
     FOO_LIB_DIR = 'NIL' --> please set!
     FOO_LIBS = 'foo' --> please set!
+    ----
     --- variables for package baz
     BAZ_INCLUDE_DIR = 'NIL' --> please set!
     BAZ_LIB_DIR = 'NIL' --> please set!
     BAZ_LIBS = 'baz' --> please set!
+    ----
     lake: unsatisfied needs
 
-This is in a form that can be directly used in a configuration file; you can then say `lake > config`, edit `config` and then rename `config` to `lakeconfig`  or directly say `lake CONFIG_FILE=config`.
-
-(It is tempting to say `lake > lakeconfig` here but this will not work because `lake` will try to open `lakeconfig` when it is being written.)
+This is in a form that can be directly used in a configuration file; you can then say `lake -w` and the above will be put in `lakeconfig.lua` and edit the variables. These lines can then be copied into `~/.lake/config` to be globally visible.
 
 The most common way to install a package in Windows is to put it into its own directory. If you specify `FOO_DIR` then `lake` will try to find `include` and `lib` subdirectories.
+
+Another way of seeing this is that `lake` expects global variables of this form in order to satisfy a need.  So you simply might have in your lakefile:
+
+    FOO_LIBS = 'foo3'
+    if WINDOWS then
+        FOO_DIR = 'c:\\foolib'
+    else
+        FOO_INCLUDE_DIR = '/usr/include/foo3'
+    end
+
+
+If there is a Lua module of the form 'lake.needs.NAME', then it will be loaded. Here 'NAME' can be a simple name or be 'PACKAGE-SUB'. The module is assumed to return a function, which will be passed the 'SUB' name if present.
+
+For example, a module that satisfies a simple 'foo' need would be called 'lake.needs.foo' and could simply look like this:
+
+    return function()
+        FOO_INCLUDE_DIR = '/usr/include/foo3'
+        FOO_LIBS = 'foo3'
+    end
+
+Now imagine that this module does some more sophisticated, OS-dependent checking, and we have a mechanism that can do arbitrary work to satisfy a need. Plus, `luarocks` can be then used to deliver a particular need to all users.
 
 Additional needs can also be specified by the `NEEDS` global variable. If I wanted to build a program with OpenCV, I can either say:
 
@@ -538,7 +559,7 @@ In this lakefile, the result of compiling the DLL (its _target_) is added as an 
 
 This is an example where different compilers behave in different ways, and is a story of awkward over-complication. On Unix, programs link dynamically against the C runtime (libc) unless explicitly asked not to, whereas `CL` links statically. To link a Unix program statically, add `static=true` to your program options; to link a Windows `CL` program dynamically, add `dynamic=true`.
 
-It is tempting to force consistent operation, and always link dynamically, but this is not a wise consistency, because `CL` will then link against `msvcr80.dll`, `msvcr90.dll` and so on which in effect you will have to redistribute with your application anyway, either as a private side-by-side assembly or via `VCDist`.
+It is tempting to force consistent operation, and always link dynamically, but this is not a wise consistency, because `CL` will then link against `msvcr80.dll`, `msvcr90.dll` and so on; you will have to redistribute the runtime with your application anyway, either as a private side-by-side assembly or via `VCDist`.
 
 Here is the straight `CL` link versus the dynamic build for comparison:
 
@@ -771,12 +792,13 @@ Depending on an unconditional action does the job. (However, this is not entirel
 
 ### Command-line Flags
 
- * Name/Value pairs of the form `VAR=STRING`:
+ * Name/Value pairs of the form `VAR=STRING`: these will be globals within the script.
  * flags:
      - lakefile: `-f` read a named lakefile, `-d` set initial directory. `-e` will evaluate the next quoted argument as a lakefile.
      - testing: `-v` for verbose, and `-t` for test - show what will be done, but don't execute the commands.
      - compile flags:  `-g` for debug build (also `DEBUG=true`), `-s` for strict compile (also `STRICT=true`)
      - building Lua C extensions: `-lua`
+     - write out unsatisfied needs to `lakeconfig.lua`: `-w`
   * target(s) or a filename with extension: If the extension is known (like `.c`) then the argument is compiled and run as a program; any further arguments are passed to the program.
 
 
@@ -786,7 +808,7 @@ Depending on an unconditional action does the job. (However, this is not entirel
     PLAT
     DIRSEP
     TESTING
-    LOCAL_EXEC (572)
+    LOCAL_EXEC
     EXE_EXT
     DLL_EXT
     LIBS
@@ -1028,8 +1050,8 @@ There is a subsitution function which replaces any global variables, unless they
     ok
     > = utils.subst('$(FRED) $(DEBUG)',{DEBUG=true})
     ok $(DEBUG)
-    
-    
+
+
 ## Future Directions
 
 Naturally, this is not a new idea in the Lua universe. [PrimeMover](http://primemover.sourceforge.net/) is similar in concept. There are a number of Lua-to-makefile generators, like [premake](premake.sourceforge.net/projects/) and [hamster](http://luaforge.net/projects/hamster/) - the former can also generate SCons output.
