@@ -1453,7 +1453,7 @@ local function process_args()
     end
      lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
-    if arg[0] == 'lake.lua' or arg[0]:find '[/\\]lake%.lua$' then
+    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' then
         if use_lakefile then
             local orig_lakefile = lakefile
             lakefile = exists_lua(lakefile or 'lakefile')
