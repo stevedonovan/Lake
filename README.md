@@ -4,38 +4,37 @@
 
 Much of the inspiration for `lake` comes from Martin Fowler's article on [dependency-driven programming](http://martinfowler.com/articles/rake.html) in `rake`.
 
-There is one file, `lake.lua`, which only depends on LuaFileSystem - the suggested practice is to make a suitable script or batch file to run it from the console. That is, either this for Unix
+There is one file, `lake`, which only depends on LuaFileSystem. On Unix, you can
+simply make it executable and put it on your path.
 
-    # lake
-    lua /path/to/lake.lua "$@"
-    
-or this
-    
+
+Or for Windows:
+
     rem lake.bat
-    lua \path\to\lake.lua %*
-    
+    lua \path\to\lake %*
+
 Apart from being quick & compact, these are the features of interest:
 
    - it is an embedded DSL (Domain Specific Language) - all the normal functionality of Lua is available
    - it knows about both `GCC` and Microsoft Visual C++ compilers, and does cross-platform builds
    - it knows about building Lua extensions in C or C++
- 
+
 For example, a lakefile for building a GTK application can be as simple as:
 
     c.program{'hello',needs='gtk'}
-    
+
 Creating a binary Lua extension:
 
     c.shared{'mylib',needs='lua'}
-    
+
 `lake` can be used to automate other tools as well. This will convert all JPEG files in the current directory to PNG, but only if the PNG file does not exist or the JPEG file has changed.
 
     to_png = rule('.jpg','.png',
-      'convert $(INPUT) $(TARGET)' 
+      'convert $(INPUT) $(TARGET)'
     )
-    
+
     default(to_png '*')
-    
+
 Here is a lakefile for building Lua itself:
 
     LUA='lua'
