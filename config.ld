@@ -1,0 +1,5 @@
+file='lake.luadoc'
+project = 'lake'
+readme = 'doc/index.md'
+dir = 'out'
+format = 'markdown'

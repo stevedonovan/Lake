@@ -1,0 +1,29 @@
+--[[------
+Lake - a build framework in Lua
+
+Freely distributable for any purpose, as long as copyright notice is retained. (X11/MIT)
+(And remember my dog did not eat your homework)
+Steve Donovan, 2007-2012
+
+    Lake version 1.2  A Lua-based Build Engine
+      lake <flags> <assigments> <target(s)>
+      -Flags:
+        -v verbose
+        -n don't synthesize target
+        -d initial directory
+        -t test (show but don't execute commands)
+        -s strict compile
+        -g debug build
+        -f FILE read a named lakefile
+        -e EXPR evaluate an expression
+        -l FILE build a shared library/DLL
+        -p FILE build a program
+        -w write out unsatisfied needs to lakeconfig.lua
+        -lua FILE build a Lua binary extension
+      -assigmnents: arguments of the form VAR=STRING assign the string
+             to the global VAR
+      -target(s): any targets of the lakefile; if a file with a recognized
+              extension, build and run, passing any remaining arguments.
+
+@script lake
+]]
