@@ -1698,6 +1698,25 @@ function lake.set_flags(parms)
             end
             return flags
         end
+        if PLAT == 'Darwin' then -- Framework support for OS X
+            c.flags_handler = function(args,compile)
+                local res = ''
+                if args.framework_dir then
+                    res = res..' -F '..args.framework_dir
+                end
+                if args.universal then
+                    res = res..' -arch x86_64 -arch i386'
+                end
+                if not compile and args.framework then
+                    res = res..' -framework '..args.framework
+                end
+                if args.min_version then
+                    if args.min_version == true then args.min_version = "10.5" end
+                    res = res..' -mmacosx-version-min='..args.min_version
+                end
+                return res
+            end
+        end
         c.auto_deps = '-MMD'
         AR = PREFIX..'ar'
         c.compile = '$(CC) -c $(CFLAGS)  $(INPUT) -o $(TARGET)'
@@ -1718,7 +1737,6 @@ function lake.set_flags(parms)
         c.incdir = '-I'
         C_DEFDEF = '-D'
         if PLAT=='Darwin' then
-            C_LINK_PREFIX = 'MACOSX_DEPLOYMENT_TARGET=10.3 '
             C_LINK_DLL = ' -bundle -undefined dynamic_lookup'
         else
             C_LINK_DLL = '-shared'
@@ -1892,6 +1910,9 @@ local function _compile(name,compile_deps,lang)
         cflags = cflags..concat_arg(lang.incdir,args.incdir,' ',args.base)
     end
 
+    if lang.flags_handler then
+       cflags = cflags..lang.flags_handler(args,true)
+    end
     -- @doc 'flags' extra flags for compilation
     if args.flags then
         cflags = cflags..' '..args.flags
@@ -1950,7 +1971,11 @@ local function examine_config_vars(package)
     local libdir_v = upack..'_LIB_DIR'
     local libs_v = upack..'_LIBS'
     local dir_v = upack..'_DIR'
-    local incdir,libdir,libs,dir = _G[incdir_v],_G[libdir_v],_G[libs_v],_G[dir_v]
+    local cflags_v = upack..'_CFLAGS'
+    local lflags_v = upack..'_LFLAGS'
+
+    local incdir,libdir,libs,dir,cflags,lflags =
+        _G[incdir_v],_G[libdir_v],_G[libs_v],_G[dir_v],_G[cflags_v],_G[lflags_v]
 
     local function checkdir(val,var,default)
         local none = val == nil
@@ -1974,11 +1999,15 @@ local function examine_config_vars(package)
             if not libs then libs = package end
         end
     end
-    checkdir(incdir,incdir_v)
+    if not cflags then
+        checkdir(incdir,incdir_v)
+    end
     -- generally you will always need a libdir for Windows; otherwise only check if specified
-    if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
-    checkdir(libs,libs_v,package)
-    return {incdir = incdir, libdir = libdir, libs = libs}
+    if libdir ~= nil then checkdir(libdir,libdir_v) end
+    if not lflags then
+        checkdir(libs,libs_v,package)
+    end
+    return {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
 end
 
 local pkg_config_present
@@ -2219,6 +2248,11 @@ local program_fields = {
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
     base=true, -- base directory for source and includes
+    ---- OS X support
+    framework=true, -- link against framework (-framework flag)
+    framework_dir=true, -- provide framework path (-F flag)
+    universal=true,  -- universal 32bit/64bit Intel binary
+    min_version=true, -- minimum OS X version (default 10.5)
 }
 
 function lake.add_program_option(options)
@@ -2292,6 +2326,9 @@ local function _program(ptype,name,deps,lang)
         if args.dynamic then
             if MSVC then libs = libs..C_LIBDYNAMIC	end
         end
+        if lang.flags_handler then
+            libs = libs..lang.flags_handler(args,false)
+        end
         -- @doc 'libs' specifying the list of libraries to be linked against
         if args.libs then
             local libstr
@@ -2306,7 +2343,7 @@ local function _program(ptype,name,deps,lang)
         if args.libflags then
             libs = libs..args.libflags
             if not args.defines then args.defines = '' end
-            args.defines = args.defines .. '_DLL'
+            --args.defines = args.defines .. '_DLL'
         end
         if args.strip then
             libs = libs..C_STRIP
