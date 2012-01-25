@@ -1,0 +1,1 @@
+prog.o: prog.c

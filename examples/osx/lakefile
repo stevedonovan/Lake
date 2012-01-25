@@ -1,0 +1,13 @@
+--[[
+c.program{'prog',
+    framework_dir='/System/Library/Frameworks/',
+    framework='Carbon',
+    universal = true
+}
+]]
+
+CARBON_CFLAGS='-F /System/Library/Frameworks/'
+CARBON_LFLAGS = CARBON_CFLAGS .. ' -framework Carbon'
+
+c.program{'prog',needs='carbon'}
+
