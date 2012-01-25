@@ -35,7 +35,6 @@ local nbuild = 0
 local all_targets_list = {}
 local attributes = lfs.attributes
 local env = os.getenv
-local concat = table.concat
 
 local TMPSPEC = '_t_.spec'
 local specfile
@@ -532,6 +531,20 @@ function append_list(l1,l2)
 end
 list.extend = append_list
 
+local function append_unique(l,v)
+    if not index_list(l,v) then
+        append(l,v)
+    end
+end
+list.append_unique = append_unique
+
+local function append_list_unique(l1,l2)
+    for i,v in ipairs(l2) do
+        append_unique(l1,v)
+    end
+end
+list.extend_unique = append_list_unique
+
 function copy_list (l1)
     return append_list({},l1)
 end
@@ -703,6 +716,9 @@ function utils.which (prog)
     end
 end
 
+local function concat(s1,s2) return (s1 or '')..' '..s2 end
+
+
 --end_of_libs---------------------------------------------
 
 local interpreters = {
@@ -757,6 +773,9 @@ c99 = CI{ext='.c'}
 cpp.defaults = appender()
 f.defaults = appender()
 c99.defaults = appender()
+
+-- precompiled C++ headers
+cpp_ch = inherits_from(cpp) { ext = '.h' }
 
 wresource = {ext='.rc'}
 
@@ -910,6 +929,7 @@ rt.__index = rt
 
 -- create a rule object, mapping input files with extension @in_ext to
 -- output files with extension @out_ext, using an action @cmd
+-- Most of the customization of rules comes from setting a lang field.
 function rule(in_ext,out_ext,cmd)
     local r = {}
     r.in_ext = in_ext
@@ -929,8 +949,9 @@ function rt.deps_filename (r,name)
 end
 
 -- add a new target to a rule object, with name @tname and optional dependencies @deps.
--- @tname may have an extension, but this will be ignored, unless the in-extension is '*',
--- in which case we use this extension for the output as well.
+-- @tname may have an extension which overrides the default. If the in-extension is '*',
+-- then we use this extension for the output as well, which must be in a different directory
+-- with r.output_dir
 --
 -- if there are no explicit dependencies, we assume that we are dependent on the input file.
 -- Also, any global dependencies that have been set for this rule with depends_on().
@@ -942,27 +963,45 @@ function rt.add_target(r,tname,deps)
         in_ext = ext
         out_ext = ext
     end
-    local input = tname..in_ext
+    -- we use the given input extension by default, but fall back to the default extension
+    if ext == '' then ext = in_ext end
+    local input = tname..ext
     local base = basename(tname)
+    -- usually file.IN goes to file.OUT, but we can ask for file.IN.OUT
     local target_name = base..out_ext
+    if r.lang and r.lang.appends_extension then
+        target_name = base..ext..out_ext
+    end
+    -- by default, target is created in cwd, but it can be put into a subdirectory
     if r.output_dir then
         target_name = join(r.output_dir,target_name)
     elseif r.lang and r.lang.output_in_same_dir then
+        -- this is used by compilers like javac which generate output files
+        -- within the same directory as the source files
         target_name = replace_extension(input,r.out_ext)
     end
+
+    -- the files which this target is dependent on.
+    -- We are always dependent on the input!
     if deps then
         deps = deps_arg(deps)
-        table.insert(deps,1,input)
+    else
+        deps = {}
     end
-    if not deps and r.lang and r.lang.uses_dfile then
-        deps = deps_from_d_file(replace_extension(target_name,'.d'))
+    table.insert(deps,1,input)
+    -- we can be dependent on headers extracted from a .d file
+    if r.lang and r.lang.uses_dfile then
+        local ddeps = deps_from_d_file(replace_extension(target_name,'.d'))
+        if ddeps then
+            append_list_unique(deps, ddeps)
+        end
     end
-    if not deps then
-        deps = {input}
-    end
+    -- finally the rule may have a set of prequisites that applies to all targets;
+    -- this is used for explicit headers field when compiling.
     if r.global_deps then
-        append_list(deps,r.global_deps)
+        append_list_unique(deps,r.global_deps)
     end
+
     local t = new_target(target_name,deps,r.cmd)
     t.name = tname
     t.input = input
@@ -1152,7 +1191,7 @@ function fire(t)
         if #combined_targets > 0 then
             local fake_target = copy_table(first_target)
             fake_target.fake = true
-            fake_target.input = concat(combined_targets,' ')
+            fake_target.input = table.concat(combined_targets,' ')
             fire(fake_target)
             current_rule,first_target,combined_targets = nil,nil,{}
             -- can now pass through and fire the target we were originally passed
@@ -1170,7 +1209,7 @@ function fire(t)
         if t.link and t.link.massage_link then
             deps = t.link.massage_link(t.name,deps,t)
         end
-        DEPENDS = concat(deps,' ')
+        DEPENDS = table.concat(deps,' ')
     end
     LIBS = t.libs
     CFLAGS = t.cflags
@@ -1753,6 +1792,10 @@ function lake.set_flags(parms)
         C_STRIP = ' -Wl,-s'
         C_LIBSTATIC = ' -static'
         c.uses_dfile = 'slash'
+        cpp_ch.obj_ext = '.gch'
+        cpp_ch.use_compiled_header = '-include '
+        cpp_ch.appends_extension = true
+
         -- @doc under Windows, we use the .def file if provided when linking a DLL
         function c.massage_link (name,deps)
             local def = exists(name..'.def')
@@ -1817,7 +1860,7 @@ function lake.set_flags(parms)
         local rule,file_pat,dfile,target,ls
         local function write_deps()
             local outd = io.open(dfile,'w')
-            outd:write(target,': ',concat(ls,' '),'\n')
+            outd:write(target,': ',table.concat(ls,' '),'\n')
             outd:close()
         end
         if not NODEPS then
@@ -1865,6 +1908,10 @@ function lake.set_flags(parms)
         C_LIBDYNAMIC = 'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
         c.uses_dfile = 'noslash'
 
+        cpp_ch.obj_ext = '.pch'
+        cpp_ch.use_compiled_header = '/Yu'
+        cpp_ch.make_compiled_header = '/Yc /Tp'
+
         wresource.compile = 'rc $(CFLAGS) /fo$(TARGET) $(INPUT) '
         wresource.obj_ext='.res'
         wresource.incdir ='/i'
@@ -1895,17 +1942,16 @@ local function _compile(name,compile_deps,lang)
     if lang.init_flags then
         cflags = lang.init_flags(pick(args.debug,DEBUG), pick(args.optimize,OPTIMIZE), pick(args.strict,STRICT))
     end
+    -- @doc C99 and MSVC: best we can do is compile as C++
     if lang == c99 and CC == 'cl' then
         cflags = cflags .. ' /TP'
     end
-
     compile_deps = args.compile_deps or args.headers
     -- @doc 'defines' any preprocessor defines required
     if args.defines then
         cflags = cflags..concat_arg(C_DEFDEF,args.defines,' ')
     end
     -- @doc 'incdir' specifying the path for finding include files
-
     if args.incdir then
         cflags = cflags..concat_arg(lang.incdir,args.incdir,' ',args.base)
     end
@@ -1964,6 +2010,9 @@ local function examine_config_vars(package)
     -- it isn't identical to the need name. However a lib dir is only essential for Windows,
     -- which has no convenient system-wide lib directory.
     --
+    -- You may also directly define FRODO_CFLAGS and FRODO_LFLAGS to provide
+    -- arbitrary compile/link flags; in this case the directory checks are skipped
+    --
     -- If this check fails, then Lake can generate skeleton configuration files for
     -- the needs.
     local upack = package:upper():gsub('%W','_')
@@ -2003,8 +2052,8 @@ local function examine_config_vars(package)
         checkdir(incdir,incdir_v)
     end
     -- generally you will always need a libdir for Windows; otherwise only check if specified
-    if libdir ~= nil then checkdir(libdir,libdir_v) end
     if not lflags then
+        if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
         checkdir(libs,libs_v,package)
     end
     return {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
@@ -2248,6 +2297,7 @@ local program_fields = {
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
     base=true, -- base directory for source and includes
+    precompiled_header=true, -- provide a header to be precompiled and used
     ---- OS X support
     framework=true, -- link against framework (-framework flag)
     framework_dir=true, -- provide framework path (-F flag)
@@ -2266,7 +2316,7 @@ function check_options (args,fields,where)
         where = 'program'
     end
     for k,v in pairs(args) do
-        if type(k) == 'string' and not fields[k] then
+        if type(k) == 'string' and not (k:match '^_' or fields[k]) then
             quit("unknown %s option '%s'",where,k)
         end
     end
@@ -2380,15 +2430,30 @@ local function _program(ptype,name,deps,lang)
             if not isdir(odir) then lfs.mkdir(odir) end
         end
     end
+    local pcr
     if not cr then
         -- generally a good idea for Unix shared libraries
-        if ptype == 'dll' and CC ~= 'cl' and not WINDOWS then
-            args.flags = (args.flags or '')..' -fPIC'
+        if ptype == 'dll' and not WINDOWS then
+            args.flags = concat(args.flags,'-fPIC')
+        end
+        if args.precompiled_header then
+            -- this is a header which must be specially compiled with the correct
+            -- incantations
+            local oflags, odeps = args.flags, args.nodeps
+            if cpp_ch.make_compiled_header then
+                args.flags = concat(oflags,cpp_ch.make_compiled_header)
+            end
+            args.nodeps = true
+            pcr = _compile(args,nil,cpp_ch)
+            pcr.output_dir = odir
+            pcr:add_target(args.precompiled_header)
+            args.flags, args.nodeps = oflags, odeps
+            -- the source files are all compiled using this header
+            args.flags = concat(args.flags,cpp_ch.use_compiled_header..args.precompiled_header)
         end
         cr = _compile(args,deps,lang)
         cr.output_dir = odir
     end
-
 
     -- can now generate a target for generating the executable or library, unless
     -- this is just a group of files
@@ -2456,7 +2521,10 @@ local function _program(ptype,name,deps,lang)
             except = expand_args(except,ext,false,args.base)
             erase_list(src,except)
         end
-        for f in list_(src) do cr(f) end
+        -- all these compile targets can depend on a precompiled header...
+        if pcr then pcr = pcr:get_targets() end
+
+        for f in list_(src) do cr:add_target(f,pcr) end
     end
     return t,cr
 end
