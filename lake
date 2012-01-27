@@ -761,7 +761,16 @@ end
 
 lake = {}
 
-c = {ext='.c'}
+local baselang = {}
+baselang.defaults = appender()
+
+function lake.new_lang(bl,t)
+    bl = bl or baselang
+    t = t or {}
+    return inherits_from(bl)(t)
+end
+
+c = lake.new_lang(nil,{ext='.c'})
 local CI = inherits_from(c)
 c.defaults = appender()
 
@@ -1379,9 +1388,13 @@ end
 
 
 local function safe_dofile (name)
-    local stat,err = pcall(dofile,name)
-    if not stat then
-        quit(err)
+    if _DEBUG then
+        dofile(name)
+    else
+        local stat,err = pcall(dofile,name)
+        if not stat then
+            quit(err)
+        end
     end
 end
 
@@ -1770,27 +1783,25 @@ function lake.set_flags(parms)
         cpp.compile_combine = '$(CXX) -c $(CFLAGS)  $(INPUT)'
         cpp.link = '$(CXX) $(DEPENDS) $(LIBS) -o $(TARGET)'
         c.lib = '$(AR) rcu $(TARGET) $(DEPENDS) && ranlib $(TARGET)'
-        C_LIBPARM = '-l'
-        C_LIBPOST = ' '
-        C_LIBDIR = '-L'
-        c.incdir = '-I'
-        C_DEFDEF = '-D'
+        baselang.LIBPARM = '-l'
+        baselang.LIBPOST = ' '
+        baselang.LIBDIR = '-L'
+        baselang.incdir = '-I'
+        baselang.DEFDEF = '-D'
         if PLAT=='Darwin' then
-            C_LINK_DLL = ' -bundle -undefined dynamic_lookup'
+            c.LINK_DLL = ' -bundle -undefined dynamic_lookup'
         else
-            C_LINK_DLL = '-shared'
+            c.LINK_DLL = '-shared'
         end
-        c.obj_ext = '.o'
-        LIB_PREFIX='lib'
-        LIB_EXT='.a'
+        baselang.obj_ext = '.o'
+        baselang.LIB_PREFIX='lib'
+        baselang.LIB_EXT='.a'
         SUBSYSTEM = '-Xlinker --subsystem -Xlinker  '  -- for mingw with Windows GUI
         if PLAT ~= 'Darwin' then
-            C_EXE_EXPORT = ' -Wl,-E'
-        else
-            C_EXE_EXPORT = ''
+            c.EXE_EXPORT = ' -Wl,-E'
         end
-        C_STRIP = ' -Wl,-s'
-        C_LIBSTATIC = ' -static'
+        baselang.STRIP = ' -Wl,-s'
+        baselang.LIBSTATIC = ' -static'
         c.uses_dfile = 'slash'
         cpp_ch.obj_ext = '.gch'
         cpp_ch.use_compiled_header = '-include '
@@ -1859,9 +1870,14 @@ function lake.set_flags(parms)
         -- with the -MMD option.
         local rule,file_pat,dfile,target,ls
         local function write_deps()
-            local outd = io.open(dfile,'w')
-            outd:write(target,': ',table.concat(ls,' '),'\n')
-            outd:close()
+            if not dfile then quit("dependencies file is undefined") end
+            local outd,err = io.open(dfile,'w')
+            if outd then
+                outd:write(target,': ',table.concat(ls,' '),'\n')
+                outd:close()
+            else
+                quit("unable to open '"..dfile.."'")
+            end
         end
         if not NODEPS then
         function c.filter(line,action)
@@ -1894,18 +1910,18 @@ function lake.set_flags(parms)
         end
         end
         c.stdout = true
-        C_LIBPARM = ''
-        C_LIBPOST = '.lib '
-        C_LIBDIR = '/LIBPATH:'
-        c.incdir = '/I'
-        C_DEFDEF = '/D'
-        C_LINK_DLL = '/DLL'
-        c.obj_ext = '.obj'
-        LIB_PREFIX=''
-        C_STRIP = ''
-        LIB_EXT='_static.lib'
+        baselang.LIBPARM = ''
+        baselang.LIBPOST = '.lib '
+        baselang.LIBDIR = '/LIBPATH:'
+        baselang.incdir = '/I'
+        baselang.DEFDEF = '/D'
+        c.LINK_DLL = '/DLL'
+        baselang.obj_ext = '.obj'
+        baselang.LIB_PREFIX=''
+        baselang.STRIP = ''
+        baselang.LIB_EXT='_static.lib'
         SUBSYSTEM = '/SUBSYSTEM:'
-        C_LIBDYNAMIC = 'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
+        baselang.LIBDYNAMIC = 'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
         c.uses_dfile = 'noslash'
 
         cpp_ch.obj_ext = '.pch'
@@ -1949,7 +1965,7 @@ local function _compile(name,compile_deps,lang)
     compile_deps = args.compile_deps or args.headers
     -- @doc 'defines' any preprocessor defines required
     if args.defines then
-        cflags = cflags..concat_arg(C_DEFDEF,args.defines,' ')
+        cflags = cflags..concat_arg(lang.DEFDEF,args.defines,' ')
     end
     -- @doc 'incdir' specifying the path for finding include files
     if args.incdir then
@@ -2364,17 +2380,17 @@ local function _program(ptype,name,deps,lang)
 
         -- @doc 'libdir' specifying the path for finding libraries
         if args.libdir then
-            libs = libs..concat_arg(C_LIBDIR,args.libdir,' ')
+            libs = libs..concat_arg(c.LIBDIR,args.libdir,' ')
         end
         -- @doc 'static' this program is statically linked against the runtime
         -- By default, GCC doesn't do this, but CL does
         if args.static then
-            if not MSVC then libs = libs..C_LIBSTATIC	end
+            if not MSVC then libs = libs..lang.LIBSTATIC	end
         elseif args.static==false then
-            if MSVC then libs = libs..C_LIBDYNAMIC	end
+            if MSVC then libs = libs..lang.LIBDYNAMIC	end
         end
         if args.dynamic then
-            if MSVC then libs = libs..C_LIBDYNAMIC	end
+            if MSVC then libs = libs..lang.LIBDYNAMIC	end
         end
         if lang.flags_handler then
             libs = libs..lang.flags_handler(args,false)
@@ -2385,7 +2401,7 @@ local function _program(ptype,name,deps,lang)
             if lang.lib_handler then
                 libstr = lang.lib_handler(args.libs)
             else
-                libstr = concat_arg(C_LIBPARM,args.libs,C_LIBPOST)
+                libstr = concat_arg(lang.LIBPARM,args.libs,lang.LIBPOST)
             end
             libs = libs..libstr
         end
@@ -2396,7 +2412,7 @@ local function _program(ptype,name,deps,lang)
             --args.defines = args.defines .. '_DLL'
         end
         if args.strip then
-            libs = libs..C_STRIP
+            libs = libs..lang.STRIP
         end
         -- @doc 'rules' explicitly providing input targets! 'inputs' is a synonym
         if args.inputs then args.rules = args.inputs end
@@ -2413,8 +2429,8 @@ local function _program(ptype,name,deps,lang)
             if not src then src = {name} end
         end
         -- @doc 'export' this program exports its symbols
-        if args.export then
-            libs = libs..C_EXE_EXPORT
+        if args.export and lang.EXE_EXPORT then
+            libs = libs..lang.EXE_EXPORT
         end
     else
         args = {}
@@ -2471,10 +2487,10 @@ local function _program(ptype,name,deps,lang)
             tname = name..EXE_EXT
         elseif ptype == 'dll' then
             tname = name..DLL_EXT
-            libs = libs..' '..C_LINK_DLL
+            libs = libs..' '..lang.LINK_DLL
             if C_LINK_PREFIX then link_prefix = C_LINK_PREFIX end
         elseif ptype == 'lib' then
-            tname = LIB_PREFIX..name..LIB_EXT
+            tname = lang.LIB_PREFIX..name..lang.LIB_EXT
             btype = 'lib'
         end
         -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
