@@ -78,17 +78,23 @@ file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
 
 function file.copy(src,dest)
     local inf,err = io.open(src,'r')
-    if err then quit(err) end
+    if err then return nil,err end
+    local dir = path.splitpath(dest)
+    if not path.isdir(dir) then
+        local ok, e = path.mkdir(dir)
+        if not ok then return nil,e end
+    end
     local outf,err = io.open(dest,'w')
-    if err then quit(err) end
+    if err then inf:close(); return nil,err end
     outf:write(inf:read('*a'))
     outf:close()
     inf:close()
+    return true
 end
 
 function file.write (name,text)
     local outf,err = io.open(name,'w')
-    if not outf then quit('%s',err) end
+    if not outf then return false,err end
     outf:write(text);
     outf:close()
     return true
@@ -403,6 +409,27 @@ function join(p1,p2,p3)
     return p1..p2
 end
 path.join = join
+
+local _mkdir
+
+function _mkdir(p)
+    -- windows root drive case
+    if p:find '^%a:/*$' then
+        return true
+    end
+    if not path.isdir(p) then
+        local subp = p:match '(.+)/[^/]+$'
+        if subp and not _mkdir(subp) then return nil,'cannot create '..subp end
+        return lfs.mkdir(p)
+    else
+        return true
+   end
+end
+
+function path.mkdir (p)
+    if WINDOWS then p = p:gsub('\\','/') end
+    return _mkdir(p)
+end
 
 -- this expands any $(VAR) occurances in @s (where VAR is a global varialable).
 -- If VAR is not present, then the expansion is just the empty string, unless
@@ -1362,6 +1389,39 @@ function expand_dependencies(t)
     end
 end
 
+local function exists_lua(name) return exists(name..'.lua') end
+
+function lake.install_plugin (kind,arg)
+    -- lake.home will exist if we were called as a program...??
+    local home, name = lake.home, splitext(arg)
+    if kind == 'install-need' then
+        arg = exists_lua(arg..'.need')
+        if not arg then quit(("%s.need.lua not found"):format(arg)) end
+        file.copy(arg,home..'/lake/need/'..arg)
+    elseif kind == 'install-lang' then
+        arg = exists_lua(arg)
+        if not arg then quit(("%s.lua not found"):format(arg)) end
+        file.copy(arg,home..'/lake/lang/'..arg)
+        -- patch the config file
+        local config = join(home,'config.lua')
+        local contents = {}
+        local req = "require 'lake.lang."..name
+        local found
+        if exists(config) then
+            for line in io.lines(config) do
+                append(contents,line)
+                if line == req then found = true end
+            end
+        end
+        if not found then
+            append(contents,req)
+            file.write(config,table.concat(contents,'\n'))
+        end
+    else
+        quit("unknown plugin kind "..kind)
+    end
+end
+
 local synth_target,synth_args_index
 
 local function update_pwd ()
@@ -1405,16 +1465,18 @@ local function process_args()
     -- arg is not set in interactive lua!
     if arg == nil then return end
     local write_needs
-    local function exists_lua(name) return exists(name) or exists(name..'.lua') end
     LUA_EXE = quote_if_necessary(arg[-1])
     STRICT = true
-    -- @doc [config] also try load ~/.lake/config
+    -- @doc [config] try load ~/.lake/config.lua, then ./lakeconfig.lua.
+    -- We also put ~./lake on the package path for Lake-specific
+    -- plugins.  If the global CONFIG_FILE is set, then we'll also try load that.
     local home = expanduser '~/.lake'
+    lake.home = home
+    package.path = home..'/?.lua;'..package.path
     local lconfig = exists_lua(join(home,'config'))
     if lconfig then
         safe_dofile(lconfig)
     end
-    -- @doc [config] try load lakeconfig in the current directory
     local lakeconfig = exists_lua 'lakeconfig'
     if lakeconfig then
         safe_dofile (lakeconfig)
@@ -1448,6 +1510,9 @@ local function process_args()
                 verbose = true
             elseif opt == 'h' or opt == '-help' then
                 print(usage)
+                os.exit(0)
+            elseif opt == 'install-lang' or opt == 'install-need' then
+                lake.install_plugin(opt,getarg())
                 os.exit(0)
             elseif opt == 't' then
                 TESTING = true
@@ -1503,12 +1568,12 @@ local function process_args()
     if CONFIG_FILE then
         safe_dofile (CONFIG_FILE)
     end
-     lake.set_flags()
+    lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
     if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' then
         if use_lakefile then
             local orig_lakefile = lakefile
-            lakefile = exists_lua(lakefile or 'lakefile')
+            lakefile = exists(lakefile or 'lakefile')
             if not lakefile then
                 quit("'%s' does not exist",orig_lakefile or 'lakefile')
             end
@@ -1518,18 +1583,21 @@ local function process_args()
             safe_dofile(lakefile)
         end
         if next(unsatisfied_needs) then
-            local out = write_needs and io.open('lakeconfig.lua','w') or io.stdout
+            local out = io.stdout
             for package,vars in pairs(unsatisfied_needs) do
+                if write_needs then
+                    local needf = package..'.need.lua'
+                    out = io.open(needf,'w')
+                    print('writing '..needf)
+                end
                 out:write(('--- variables for package %s\n'):format(package))
                 for _,v in ipairs(vars) do out:write(v,'\n') end
                 out:write('----\n')
+                if write_needs then out:close() end
             end
-            local msg = "unsatisfied needs"
-            if write_needs then
-                out:close()
-                msg = msg..": see lakeconfig.lua"
-            end
-            quit (msg)
+            print (write_needs and "please edit the needs files!"
+                or "use -w to write skeleton needs files")
+            quit "unsatisfied needs"
         end
         go()
         finalize()
@@ -2114,10 +2182,12 @@ local function handle_unknown_need (name)
     define_need(name,function()
         local ok,needs,nfun
         local pack,sub = split2(name,'%-')
-        ok,nfun = pcall(require,'lake.needs.'..(sub or name))
+        ok,nfun = pcall(require,'lake.needs.'..(pack or name))
         if ok then
             return nfun(sub)
         end
+        local nfile = exists_lua(name..'.need')
+        if nfile then safe_dofile(nfile) end
         needs = examine_config_vars(name)
         if not needs then
             lake.define_pkg_need(name)
@@ -2443,7 +2513,7 @@ local function _program(ptype,name,deps,lang)
         -- then we make a reasonably intelligent guess.
         if odir == true then
             odir = PREFIX..choose(DEBUG,'debug','release')
-            if not isdir(odir) then lfs.mkdir(odir) end
+            if not isdir(odir) then path.mkdir(odir) end
         end
     end
     local pcr
@@ -2514,7 +2584,7 @@ local function _program(ptype,name,deps,lang)
         if tpath == '' then
             if odir then target = join(odir,target) end
         else
-            lfs.mkdir(tpath)
+            path.mkdir(tpath)
         end
 
         t = new_target(target,dependencies,link_str,true)
