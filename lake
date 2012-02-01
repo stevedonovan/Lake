@@ -1822,13 +1822,15 @@ function lake.set_flags(parms)
             c.flags_handler = function(args,compile)
                 local res = ''
                 if args.framework_dir then
-                    res = res..' -F '..args.framework_dir
+                    res = res..concat_arg('-F',args.framework_dir,' ')
                 end
                 if args.universal then
                     res = res..' -arch x86_64 -arch i386'
+                    -- can't have -M flags with multiple arch flags (gcc 4.2)
+                    args.nodeps = true
                 end
                 if not compile and args.framework then
-                    res = res..' -framework '..args.framework
+                    res = res..concat_arg('-framework ',args.framework,' ')
                 end
                 if args.min_version then
                     if args.min_version == true then args.min_version = "10.5" end
@@ -1857,7 +1859,7 @@ function lake.set_flags(parms)
         baselang.incdir = '-I'
         baselang.DEFDEF = '-D'
         if PLAT=='Darwin' then
-            c.LINK_DLL = ' -bundle -undefined dynamic_lookup'
+            c.LINK_DLL = ' -dynmaiclib -undefined dynamic_lookup'
         else
             c.LINK_DLL = '-shared'
         end
