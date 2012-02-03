@@ -1859,7 +1859,7 @@ function lake.set_flags(parms)
         baselang.incdir = '-I'
         baselang.DEFDEF = '-D'
         if PLAT=='Darwin' then
-            c.LINK_DLL = ' -dynmaiclib -undefined dynamic_lookup'
+            c.LINK_DLL = ' -dynamiclib -undefined dynamic_lookup'
         else
             c.LINK_DLL = '-shared'
         end
