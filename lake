@@ -1405,7 +1405,7 @@ function lake.install_plugin (kind,arg)
         -- patch the config file
         local config = join(home,'config.lua')
         local contents = {}
-        local req = "require 'lake.lang."..name
+        local req = "require 'lake.lang."..name.."'"
         local found
         if exists(config) then
             for line in io.lines(config) do
