@@ -743,6 +743,30 @@ function utils.which (prog)
     end
 end
 
+--- answering the question: is an include file within the MSVC include path?
+local msvc_includes
+local msvc_include_cache = {}
+
+local function within_msvc_include_path (file)
+    if not msvc_includes then
+        local include = env 'INCLUDE':gsub(';$',''):lower()
+        msvc_includes = split(include,';')
+    end
+    local res = msvc_include_cache[file]
+    if res ~= nil then return res end
+    local dir = splitpath(file):lower()
+    for d in list_(msvc_includes) do
+        local i1,i2 = dir:find(d)
+        if i1==1 and i2 == #d then
+            res = true
+            break
+        end
+    end
+    msvc_include_cache[file] = res
+    return res
+end
+
+
 local function concat(s1,s2) return (s1 or '')..' '..s2 end
 
 
@@ -812,6 +836,9 @@ c99.defaults = appender()
 
 -- precompiled C++ headers
 cpp_ch = inherits_from(cpp) { ext = '.h' }
+
+-- experimental C++11 support
+cpp11 = inherits_from(cpp) {}
 
 wresource = {ext='.rc'}
 
@@ -1105,14 +1132,15 @@ function deps_from_d_file(fname)
     local line,err = file.read(fname)
     if not line or #line == 0 then return false,err end
     local _,deps = parse_deps_line(line:gsub(' \\',' '))
-    -- @doc any absolute paths are regarded as system headers; don't include.
-    local res = {}
-    for d in list_(deps) do
-        if not isabs(d) then
-            append(res,d)
-        end
-    end
-    return res
+    return deps
+--~     -- @doc any absolute paths are regarded as system headers; don't include.
+--~     local res = {}
+--~     for d in list_(deps) do
+--~         if not isabs(d) then
+--~             append(res,d)
+--~         end
+--~     end
+--~     return res
 end
 
 function rules_from_deps(file,extract_include_paths)
@@ -1818,26 +1846,38 @@ function lake.set_flags(parms)
             end
             return flags
         end
-        if PLAT == 'Darwin' then -- Framework support for OS X
-            c.flags_handler = function(args,compile)
-                local res = ''
+        c.flags_handler = function(lang,args,compile)
+            local flags = ''
+            if PLAT == 'Darwin' then -- Framework support for OS X
                 if args.framework_dir then
-                    res = res..concat_arg('-F',args.framework_dir,' ')
+                    flags = flags..concat_arg('-F',args.framework_dir,' ')
                 end
                 if args.universal then
-                    res = res..' -arch x86_64 -arch i386'
-                    -- can't have -M flags with multiple arch flags (gcc 4.2)
+                    flags = flags..' -arch x86_64 -arch i386'
+                    -- can't have -M flags with multiple arch flags (gcc)
                     args.nodeps = true
                 end
                 if not compile and args.framework then
-                    res = res..concat_arg('-framework ',args.framework,' ')
+                    flags = flags..concat_arg('-framework',args.framework,' ')
                 end
                 if args.min_version then
                     if args.min_version == true then args.min_version = "10.5" end
-                    res = res..' -mmacosx-version-min='..args.min_version
+                    flags = flags..' -mmacosx-version-min='..args.min_version
                 end
-                return res
             end
+            if lang == cpp11 then
+                if compile then
+                    flags = flags .. ' -std=c++0x'
+                elseif WINDOWS and not args.static then
+                    flags = flags .. ' -shared-libstdc++'
+                end
+            end
+            -- we default to stripping the executable, unless strip is explicitly specified
+            -- and we're not exporting symbols or doing a debug build.
+            if not args.export and not args.debug and args.strip == nil then
+                args.strip = true
+            end
+            return flags
         end
         c.auto_deps = '-MMD'
         AR = PREFIX..'ar'
@@ -1932,6 +1972,11 @@ function lake.set_flags(parms)
                 -- the Lua extension entry point is visible.
                 append(deps,' /EXPORT:luaopen_'..name)
             end
+            -- a proper debug link should generate a PDB in the same directory as the executable
+            if t.debug then
+                append(deps,'/DEBUG')
+                append(deps,'/PDB:'..splitext(t.target)..'.pdb')
+            end
             return deps
         end
         -- @doc A language can define a filter which operates on the output of the
@@ -1970,7 +2015,8 @@ function lake.set_flags(parms)
           else
               local file = line:match('Note: including file:%s+(.+)')
               if file then
-                if not isabs(file) then -- only relative paths are considered dependencies
+                -- we only want _our_ include files as dependencies!
+                if not isabs(file) or not within_msvc_include_path(file) then
                     append(ls,file)
                 end
               else
@@ -2043,7 +2089,7 @@ local function _compile(name,compile_deps,lang)
     end
 
     if lang.flags_handler then
-       cflags = cflags..lang.flags_handler(args,true)
+       cflags = cflags..lang:flags_handler(args,true)
     end
     -- @doc 'flags' extra flags for compilation
     if args.flags then
@@ -2427,6 +2473,7 @@ local function _program(ptype,name,deps,lang)
         --- the name can be the first element of the args table
         name = args.name or args[1]
         deps = args.deps or tail(args)
+        args.debug = args.debug or DEBUG
         --- if the name contains wildcards, then we make up a new unique target
         --- that depends on all the files
         if is_mask(name) then
@@ -2454,6 +2501,10 @@ local function _program(ptype,name,deps,lang)
         if args.libdir then
             libs = libs..concat_arg(c.LIBDIR,args.libdir,' ')
         end
+        -- an opportunity for this specific language to modify the lib flags
+        if lang.flags_handler then
+            libs = libs..lang:flags_handler(args,false)
+        end
         -- @doc 'static' this program is statically linked against the runtime
         -- By default, GCC doesn't do this, but CL does
         if args.static then
@@ -2463,9 +2514,6 @@ local function _program(ptype,name,deps,lang)
         end
         if args.dynamic then
             if MSVC then libs = libs..lang.LIBDYNAMIC	end
-        end
-        if lang.flags_handler then
-            libs = libs..lang.flags_handler(args,false)
         end
         -- @doc 'libs' specifying the list of libraries to be linked against
         if args.libs then
@@ -2514,7 +2562,7 @@ local function _program(ptype,name,deps,lang)
         -- @doc 'odir' set means we want a separate output directory. If a boolean,
         -- then we make a reasonably intelligent guess.
         if odir == true then
-            odir = PREFIX..choose(DEBUG,'debug','release')
+            odir = PREFIX..choose(args.debug,'debug','release')
             if not isdir(odir) then path.mkdir(odir) end
         end
     end
@@ -2595,6 +2643,7 @@ local function _program(ptype,name,deps,lang)
         t.link = lang
         t.input = name..lang.obj_ext
         t.lua = args.lua
+        t.debug = args.debug
         t.ptype = ptype
         cr.parent = t
         t.compile_rule = cr
@@ -2634,7 +2683,7 @@ function lake.add_group (lang)
     end
 end
 
-for lang in list_ {c,c99,cpp} do
+for lang in list_ {c,c99,cpp,cpp11} do
     lake.add_prog(lang)
     lake.add_shared(lang)
     lake.add_library(lang)
