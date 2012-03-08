@@ -1950,6 +1950,13 @@ function lake.set_flags(parms)
             end
             return flags
         end
+        c.flags_handler = function(lang,args,compile)
+            local flags = ''
+            if compile and (args.dynamic or args.static == false) then
+                flags = flags .. ' /MD'
+            end
+            return flags
+        end
         c.compile = 'cl /nologo -c $(CFLAGS)  $(INPUT) /Fo$(TARGET)'
         c.compile_combine = 'cl /nologo -c $(CFLAGS)  $(INPUT)'
         c.link = 'link /nologo $(DEPENDS) $(LIBS) /OUT:$(TARGET)'
@@ -2048,7 +2055,7 @@ function lake.set_flags(parms)
         baselang.STRIP = ''
         baselang.LIB_EXT='_static.lib'
         SUBSYSTEM = '/SUBSYSTEM:'
-        baselang.LIBDYNAMIC = 'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
+        baselang.LIBDYNAMIC = '' --'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
         c.uses_dfile = 'noslash'
 
         cpp_ch.obj_ext = '.pch'
@@ -2521,7 +2528,7 @@ local function _program(ptype,name,deps,lang)
         if args.static then
             if not MSVC then libs = libs..lang.LIBSTATIC	end
         elseif args.static==false then
-            if MSVC then libs = libs..lang.LIBDYNAMIC	end
+            args.dynamic = true
         end
         if args.dynamic then
             if MSVC then libs = libs..lang.LIBDYNAMIC	end
