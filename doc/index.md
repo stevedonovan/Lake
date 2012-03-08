@@ -767,6 +767,32 @@ And then things work as expected:
 
 The closest equivalent to linking for Java would be building a jarfile, which is fairly straightforward to express as well - the involved bit is setting the main class in a manifest for an executable jarfile.
 
+### OS X Support
+
+OS X's version of `GCC` has the concept of 'frameworks' which allow the compiler to resolve both include and library paths:
+
+    $ cat lakefile
+    c.program{'prog',framework='Carbon OpenGL'}
+    $ lake
+    gcc -c -O1 -Wall  -MMD  prog.c
+    gcc prog.o  -framework Carbon -framework OpenGL -o prog
+
+Defining Objective-C as a new language is straightforward. It 'inherits' most behaviour from C, except that the extension is now '.m'. We can hook into the compile and link phases with `flags_handler` - in this case to ensure that the `Foundation` framework is present if not specified.
+
+    objc = lake.new_lang(c,{ext='.m'})
+
+    objc.flags_handler = function(lang,args,compile)
+     if not compile and not args.framework then
+           args.framework = 'Foundation'
+     end
+     return c:flags_handler(args,compile)
+    end
+
+    lake.add_prog(objc)
+    lake.add_shared(objc)
+
+    obj.program{'first',src='main car'}
+
 ### Running Tests
 
 This is an important activity, and it's useful to have some tool support.

@@ -320,6 +320,17 @@ local function split2(s,delim)
   return s:match('([^'..delim..']+)'..delim..'(.*)')
 end
 
+local lua52 = table.pack ~= nil
+
+function utils.execute (cmd)
+    local res1,res2,res2 = os.execute(cmd)
+    if not lua52 then
+        return res1==0,res1
+    else
+        return res1,res2
+    end
+end
+
 -- given a path @path, return the directory part and a file part.
 -- if there's no directory part, the first value will be empty
 function splitpath(path)
@@ -1217,8 +1228,8 @@ function exec(s,dont_fail)
     local cmd = subst(s)
     print(cmd)
     if not TESTING then
-        local res = os.execute(cmd)
-        if res ~= 0 then
+        local ok,res = utils.execute(cmd)
+        if not ok then
             if not dont_fail then quit ("failed with code %d",res) end
             return res
         end
@@ -1290,7 +1301,7 @@ function fire(t)
             else
                 redirect = '2>'; outf = io.stderr
             end
-            local code = os.execute(cmd..' '..redirect..' '..tmpfile)
+            local ok,code = utils.execute(cmd..' '..redirect..' '..tmpfile)
             filter({TARGET,INPUT,t.rule},'start')
             local inf = io.open(tmpfile,'r')
             for line in inf:lines() do
@@ -1300,7 +1311,7 @@ function fire(t)
             inf:close()
             os.remove(tmpfile)
             filter(t.base,'end')
-            if code ~= 0 then quit ("failed with code %d",code) end
+            if not ok then quit ("failed with code %d",code) end
         else
             exec(t.cmd)
         end
@@ -2209,7 +2220,7 @@ function lake.define_pkg_need (name,package)
             quit("package "..package.." requires pkg-config on the path")
         end
         if pkg_config_present then
-             if os.execute('pkg-config '..package..null) == 0 then
+             if utils.execute('pkg-config '..package..null) then
                 knows_package = true
             elseif alias then
                 quit("package "..package.." not known by pkg-config; please install")
