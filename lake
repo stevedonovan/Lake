@@ -80,7 +80,7 @@ function file.copy(src,dest)
     local inf,err = io.open(src,'r')
     if err then return nil,err end
     local dir = path.splitpath(dest)
-    if not path.isdir(dir) then
+    if dir ~= '' and not path.isdir(dir) then
         local ok, e = path.mkdir(dir)
         if not ok then return nil,e end
     end
@@ -1130,12 +1130,20 @@ function rt.depends_on(r,s)
     end
 end
 
+local function remove_quotes (ls)
+    for i,s in ipairs(ls) do
+        if s:find '^"' then
+            ls[i] = s:sub(2,-2)
+        end
+    end
+end
+
 local function parse_deps_line (line)
     line = line:gsub('\n$','')
     -- each line consists of a target, and a list of dependencies; the first item is the source file.
     local target,deps = line:match('([^:]+):%s*(.+)')
     if target and deps then
-        return target,split_list(deps)
+        return target,remove_quotes(split_list(deps))
     end
 end
 
@@ -1144,14 +1152,6 @@ function deps_from_d_file(fname)
     if not line or #line == 0 then return false,err end
     local _,deps = parse_deps_line(line:gsub(' \\',' '))
     return deps
---~     -- @doc any absolute paths are regarded as system headers; don't include.
---~     local res = {}
---~     for d in list_(deps) do
---~         if not isabs(d) then
---~             append(res,d)
---~         end
---~     end
---~     return res
 end
 
 function rules_from_deps(file,extract_include_paths)
@@ -2035,7 +2035,7 @@ function lake.set_flags(parms)
               if file then
                 -- we only want _our_ include files as dependencies!
                 if not isabs(file) or not within_msvc_include_path(file) then
-                    append(ls,file)
+                    append(ls,quote_if_necessary(file))
                 end
               else
                 return line
@@ -2588,6 +2588,7 @@ local function _program(ptype,name,deps,lang)
     if not cr then
         -- generally a good idea for Unix shared libraries
         if ptype == 'dll' and not WINDOWS then
+        -- altho Jay reckons it can be inefficient if applied needlessly...!!
             args.flags = concat(args.flags,'-fPIC')
         end
         if args.precompiled_header then
