@@ -577,9 +577,11 @@ end
 list.append_unique = append_unique
 
 local function append_list_unique(l1,l2)
+    l1 = l1 or {}
     for i,v in ipairs(l2) do
         append_unique(l1,v)
     end
+    return l1
 end
 list.extend_unique = append_list_unique
 
@@ -1891,6 +1893,8 @@ function lake.set_flags(parms)
             end
             return flags
         end
+        -- do this explicitly, in case we're switching compilers in mid-stream
+        c.filter = nil
         c.auto_deps = '-MMD'
         AR = PREFIX..'ar'
         c.compile = '$(CC) -c $(CFLAGS)  $(INPUT) -o $(TARGET)'
@@ -2489,12 +2493,15 @@ local function _program(ptype,name,deps,lang)
         args = name
         check_options(args,program_fields,'program')
         append_table(args,lang.defaults)
-        --- the name can be the first element of the args table
+        --- the name can be the first element of the args table;
+        --- the rest of the array will be considered as dependencies.
         name = args.name or args[1]
         deps = args.deps or tail(args)
+        if deps and #deps == 0 then deps = nil end
         args.debug = args.debug or DEBUG
         --- if the name contains wildcards, then we make up a new unique target
-        --- that depends on all the files
+        --- that depends on all the files. So for instance 'c.program '*' will compile
+        --- all C files in a directory as programs.
         if is_mask(name) then
             local names = expand_args(name,args.ext or lang.ext,args.recurse,args.base)
             targets = {}
@@ -2515,7 +2522,6 @@ local function _program(ptype,name,deps,lang)
         if args.needs or NEEDS then
             update_needs(ptype,args)
         end
-
         -- @doc 'libdir' specifying the path for finding libraries
         if args.libdir then
             libs = libs..concat_arg(c.LIBDIR,args.libdir,' ')
@@ -2534,8 +2540,21 @@ local function _program(ptype,name,deps,lang)
         if args.dynamic then
             if MSVC then libs = libs..lang.LIBDYNAMIC	end
         end
+        -- @doc we may depend on static libraries which have explicit link needs!
+        if deps then
+            local xlibs = {}
+            for d in list_(deps) do
+                if istarget(d) and d.ptype == 'lib' and d.libs then
+                   list.extend_unique(xlibs,deps_arg(d.libs))
+                end
+            end
+            if #xlibs > 0 then
+                args.libs = list.extend_unique(args.libs,xlibs)
+            end
+        end
         -- @doc 'libs' specifying the list of libraries to be linked against
-        if args.libs then
+        -- (if we're a static library, then these libs will be used when finally linking)
+        if args.libs and ptype ~= 'lib' then
             local libstr
             if lang.lib_handler then
                 libstr = lang.lib_handler(args.libs)
@@ -2590,7 +2609,7 @@ local function _program(ptype,name,deps,lang)
         -- generally a good idea for Unix shared libraries
         if ptype == 'dll' and not WINDOWS then
         -- altho Jay reckons it can be inefficient if applied needlessly...!!
-            args.flags = concat(args.flags,'-fPIC')
+            args.flags = concat(args.flags,'-fpic')
         end
         if args.precompiled_header then
             -- this is a header which must be specially compiled with the correct
@@ -2659,7 +2678,7 @@ local function _program(ptype,name,deps,lang)
 
         t = new_target(target,dependencies,link_str,true)
         t.name = name
-        t.libs = libs
+        t.libs = ptype ~= 'lib' and libs or args.libs
         t.link = lang
         t.input = name..lang.obj_ext
         t.lua = args.lua
