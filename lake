@@ -599,10 +599,12 @@ function copy_table (t)
 end
 table.copy = copy_table
 
-function append_table(l1,l2)
+function append_table(l1,l2,no_overwrite)
     if not l2 then return end
     for k,v in pairs(l2) do
-        l1[k] = v
+        if not no_overwrite or l1[k] == nil then
+            l1[k] = v
+        end
     end
     return l1
 end
@@ -2492,7 +2494,7 @@ local function _program(ptype,name,deps,lang)
     if type(name) == 'table' then
         args = name
         check_options(args,program_fields,'program')
-        append_table(args,lang.defaults)
+        append_table(args,lang.defaults,true)
         --- the name can be the first element of the args table;
         --- the rest of the array will be considered as dependencies.
         name = args.name or args[1]
