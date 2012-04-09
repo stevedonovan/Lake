@@ -1490,6 +1490,8 @@ function change_dir (path)
     update_pwd()
 end
 
+lake.chdir = change_dir
+
 
 local function safe_dofile (name)
     if _DEBUG then
@@ -2595,6 +2597,9 @@ local function _program(ptype,name,deps,lang)
     else
         args = {}
     end
+    if args.base then
+        args.odir = args.base
+    end
     -- we can now create a rule object to compile files of this type to object files,
     -- using the appropriate compile command.
     local odir = args.odir
@@ -2651,7 +2656,8 @@ local function _program(ptype,name,deps,lang)
             libs = libs..' '..lang.LINK_DLL
             if C_LINK_PREFIX then link_prefix = C_LINK_PREFIX end
         elseif ptype == 'lib' then
-            tname = lang.LIB_PREFIX..name..lang.LIB_EXT
+            local dir,fname = splitpath(name)
+            tname = join(dir,lang.LIB_PREFIX..fname..lang.LIB_EXT)
             btype = 'lib'
         end
         -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
