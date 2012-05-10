@@ -1,0 +1,15 @@
+
+--f = file.group{src='common\\common.h',odir='include'}
+
+f = target('include\\common.h',{'common\\common.h'},'$(COPY) $(DEPENDS) $(TARGET)')
+
+
+prog = c.program{'first',
+    src = 'one common/common',
+    incdir = 'include',
+    deps = {f},
+}
+
+default {prog}
+
+

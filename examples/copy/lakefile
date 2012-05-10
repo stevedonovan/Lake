@@ -1,0 +1,21 @@
+
+--f = file.group{src='common\\common.h',odir='include'}
+
+join = path.join
+
+f = target(
+    join('include','common.h'),
+    {join('common','common.h')},
+    '$(COPY) $(DEPENDS) $(TARGET)'
+)
+
+prog = c.program{'first',
+    src = 'one common/common',
+    incdir = 'include',
+    compile_deps =  f, -- 'include\\common.h' also works
+}
+
+
+default {prog}
+
+

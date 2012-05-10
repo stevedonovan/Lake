@@ -317,6 +317,7 @@ utils = {}
 local function split(s,re)
     local i1 = 1
     local ls = {}
+    re = re or '%s+'
     while true do
         local i2,i3 = s:find(re,i1)
         if not i2 then
@@ -1933,8 +1934,9 @@ function lake.set_flags(parms)
             end
             -- we default to stripping the executable, unless strip is explicitly specified
             -- and we're not exporting symbols or doing a debug build.
-            -- seems ok: not args.export and
-            if  not args.debug and args.strip == nil then
+            -- Darwin, however, ceases to export symbols from executables, and doesn't
+            -- understand stripping shared libraries.
+            if PLAT ~= "Darwin" and not args.debug and args.strip == nil then
                 args.strip = true
             end
             return flags
