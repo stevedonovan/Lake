@@ -35,6 +35,7 @@ local nbuild = 0
 local all_targets_list = {}
 local attributes = lfs.attributes
 local env = os.getenv
+local unpack = unpack or table.unpack
 
 local TMPSPEC = '_t_.spec'
 local specfile
@@ -174,7 +175,7 @@ function find.include_path(candidates)
     res = res[1] -- _might_ be other instances, probably pathological?
     if type(candidates)=='string' then candidates = {candidates} end
     for _,c in ipairs(candidates) do
-        local i1,i2 = res:find(C..'$')
+        local i1,i2 = res:find(c..'$')
     end
     return res
 end
@@ -225,6 +226,18 @@ local function isabs(path)
     end
 end
 path.isabs = isabs
+
+local update_pwd
+
+function path.abs(...)
+    local args = {...}
+    if isabs(args[1]) then return args[1] end
+    if not PWD then
+        update_pwd()
+    end
+    table.insert(args,1,PWD:sub(1,-2))
+    return table.concat(args,DIRSEP)
+end
 
 local function quote_if_necessary (file)
     if file:find '%s' then
@@ -408,10 +421,17 @@ local function replace_extension (path,ext)
 end
 path.replace_extension = replace_extension
 
--- return the path resulting from combining @p1,@p2 and optionally @p3 (an extension);
--- if @p2 is already an absolute path, then it returns @p2
-function join(p1,p2,p3)
-    if p3 then p2 = p2 .. p3 end -- extension part
+-- return the path resulting from combining the path;
+-- if the second is already an absolute path, then it returns it
+function join(p1,p2,...)
+    if select('#',...) > 0 then
+        local p = path.join(p1,p2)
+        local args = {...}
+        for i = 1,#args do
+            p = join(p,args[i])
+        end
+        return p
+    end
     if isabs(p2) then return p2 end
     local endc = at(p1,#p1)
     if endc ~= '/' and endc ~= '\\' then
@@ -1468,7 +1488,7 @@ end
 
 local synth_target,synth_args_index
 
-local function update_pwd ()
+ function update_pwd ()
     local dir = lfs.currentdir()
     if WINDOWS then dir = dir:lower() end -- canonical form
     PWD = dir..DIRSEP
@@ -1511,7 +1531,7 @@ local function process_args()
     -- arg is not set in interactive lua!
     if arg == nil then return end
     local write_needs
-    LUA_EXE = quote_if_necessary(arg[-1])
+    LUA_EXE = quote_if_necessary(arg[-1] or 'lua') -- srlua does not pass this!
     STRICT = true
     -- @doc [config] try load ~/.lake/config.lua, then ./lakeconfig.lua.
     -- We also put ~./lake on the package path for Lake-specific
@@ -1587,7 +1607,19 @@ local function process_args()
         else
             if not no_synth_target and a:find('%.') and exists(a) then
                 -- @doc 'synth-target' unless specifically switched off with '-t',
-                -- see if we have a suitable rule for processing
+                -- Lua scripts are run in the context of Lake
+                if extension_of(a) == '.lua' then
+                    local new_arg = {}
+                    for k = i+1,#arg do
+                        append(new_arg,arg[k])
+                    end
+                    new_arg[0] = a
+                    new_arg[-1] = arg[-1]
+                    arg = new_arg
+                    dofile(a)
+                    os.exit(0)
+                end
+                -- otherwise, see if we have a suitable rule for processing
                 -- an existing file with this extension.
                 local _,_,rule = lake.deduce_tool(a,true)
                 if _ then
@@ -1616,7 +1648,7 @@ local function process_args()
     end
     lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
-    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' then
+    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake.exe' then
         if use_lakefile then
             local orig_lakefile = lakefile
             lakefile = exists(lakefile or 'lakefile')
@@ -1725,7 +1757,14 @@ function go()
     -- if requested, generate a default clean target, using all the targets.
     if synthesize_clean then
         local t = new_target('clean',nil,function()
-            remove(ALL_TARGETS)
+            utils.remove(ALL_TARGETS)
+            -- Object files may have associated .d dependency file
+            for t in list_(ALL_TARGETS) do
+                if extension_of(t) == baselang.obj_ext then
+                    local dfile = replace_extension(t,'.d')
+                    if exists(dfile) then utils.remove(dfile) end
+                end
+            end
         end)
         targets[index_list(targets,'clean')] = t
     end
@@ -1857,7 +1896,9 @@ function lake.set_flags(parms)
     end
     if CC ~= 'cl' then -- must be 'gcc' or something compatible
         c.init_flags = function(debug,opt,strict)
-            local flags = choose(debug,'-g',opt_flag('-',opt))
+            local flags
+            --flags = choose(debug,'-g',opt_flag('-',opt))
+            flags = (debug and '-g' or '') .. ' ' .. opt_flag('-',opt)
             if strict then
                 -- @doc 'strict compile' (-s) uses -Wall for gcc; /WX for cl.
                 flags = flags .. ' -Wall'
@@ -1892,7 +1933,8 @@ function lake.set_flags(parms)
             end
             -- we default to stripping the executable, unless strip is explicitly specified
             -- and we're not exporting symbols or doing a debug build.
-            if not args.export and not args.debug and args.strip == nil then
+            -- seems ok: not args.export and
+            if  not args.debug and args.strip == nil then
                 args.strip = true
             end
             return flags
@@ -1994,10 +2036,17 @@ function lake.set_flags(parms)
             local def = exists(name..'.def')
             if def then
                 append(deps,'/DEF:'..def)
-            elseif t.lua and t.ptype == 'dll' then
+            elseif (t.lua or t.llua) and t.ptype == 'dll' then
                 -- somewhat ugly hack: if no .def and this is a Lua extension, then make sure
                 -- the Lua extension entry point is visible.
-                append(deps,' /EXPORT:luaopen_'..name)
+                local _,mname
+                if not t.llua then
+                    _,mname = splitpath(name)
+                else
+                    mname = t.llua
+                end
+                mname = mname:gsub('%.','_')
+                append(deps,' /EXPORT:luaopen_'..mname)
             end
             -- a proper debug link should generate a PDB in the same directory as the executable
             if t.debug then
@@ -2105,7 +2154,7 @@ local function _compile(name,compile_deps,lang)
     if lang == c99 and CC == 'cl' then
         cflags = cflags .. ' /TP'
     end
-    compile_deps = args.compile_deps or args.headers
+    compile_deps = compile_deps or args.compile_deps or args.headers
     -- @doc 'defines' any preprocessor defines required
     if args.defines then
         cflags = cflags..concat_arg(lang.DEFDEF,args.defines,' ')
@@ -2215,7 +2264,11 @@ local function examine_config_vars(package)
         if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
         checkdir(libs,libs_v,package)
     end
-    return {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
+    local res = {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
+    if not next(res) then -- we found nuffink...
+        res = nil
+    end
+    return res
 end
 
 local pkg_config_present
@@ -2433,6 +2486,7 @@ end
 local program_fields = {
     name=true, -- name of target (or first value of table)
     lua=true,  -- build against Lua libs
+    args=true,  -- any default arguments (works like lang.defaults, doesn't override)
     needs=true, -- higher-level specification of target link requirements
     libdir=true, -- list of lib directories
     libs=true, -- list of libraries
@@ -2442,6 +2496,7 @@ local program_fields = {
     rules=true,inputs=true, -- explicit set of compile targets
     shared=true,dll=true, -- a DLL or .so (with lang.library)
     deps=true, -- explicit dependencies of a target (or subsequent values in table)
+    compile_deps=true, -- explicit dependencies of source files
     export=true, -- this executable exports its symbols
     dynamic=true, -- link dynamically against runtime (default true for GCC, override for MSVC)
     static=true, -- statically link this target
@@ -2496,7 +2551,9 @@ local function _program(ptype,name,deps,lang)
     if type(name) == 'table' then
         args = name
         check_options(args,program_fields,'program')
+        --- how default values can be set
         append_table(args,lang.defaults,true)
+        append_table(args,args.args,true)
         --- the name can be the first element of the args table;
         --- the rest of the array will be considered as dependencies.
         name = args.name or args[1]
@@ -2506,7 +2563,7 @@ local function _program(ptype,name,deps,lang)
         --- if the name contains wildcards, then we make up a new unique target
         --- that depends on all the files. So for instance 'c.program '*' will compile
         --- all C files in a directory as programs.
-        if is_mask(name) then
+        if name and is_mask(name) then
             local names = expand_args(name,args.ext or lang.ext,args.recurse,args.base)
             targets = {}
             for i,name in ipairs(names) do
@@ -2515,6 +2572,7 @@ local function _program(ptype,name,deps,lang)
             end
             return phony(targets,'')
         end
+        if args.shared or args.dll then ptype = 'dll' end
         src = args.src
         except = args.exclude
         subsystem = args.subsystem
@@ -2546,14 +2604,22 @@ local function _program(ptype,name,deps,lang)
         end
         -- @doc we may depend on static libraries which have explicit link needs!
         if deps then
-            local xlibs = {}
+            local xlibs,lflags = {}
             for d in list_(deps) do
-                if istarget(d) and d.ptype == 'lib' and d.libs then
-                   list.extend_unique(xlibs,deps_arg(d.libs))
+                if istarget(d) and d.ptype == 'lib'  then
+                    if d.libs then -- the lib has a list of libraries
+                        list.extend_unique(xlibs,deps_arg(d.libs))
+                    end
+                    if d.libflags then -- the lib has special link flags
+                        lflags = concat(lflags,d.libflags)
+                    end
                 end
             end
             if #xlibs > 0 then
                 args.libs = list.extend_unique(args.libs,xlibs)
+            end
+            if lflags then
+                args.libflags = concat(args.libflags,lflags)
             end
         end
         -- @doc 'libs' specifying the list of libraries to be linked against
@@ -2588,18 +2654,26 @@ local function _program(ptype,name,deps,lang)
             end
             if src then warning('providing src= with explicit rules= is useless') end
         else
-            if not src then src = {name} end
+            if src == nil then src = {name} end
         end
         -- @doc 'export' this program exports its symbols
         if args.export and lang.EXE_EXPORT then
             libs = libs..lang.EXE_EXPORT
         end
     else
-        args = {}
+        args = {} -- _probably_ an error??
     end
     if args.base then
-        args.odir = args.base
+        if args.odir then
+            if not isabs(args.odir) then
+                args.odir = join(args.base,args.odir)
+            end
+        else
+            args.odir = args.base
+        end
     end
+    -- @doc 'base' by default, setting base also sets the output directory,
+    -- if not specified (args.odir = false will suppress this)
     -- we can now create a rule object to compile files of this type to object files,
     -- using the appropriate compile command.
     local odir = args.odir
@@ -2608,14 +2682,15 @@ local function _program(ptype,name,deps,lang)
         -- then we make a reasonably intelligent guess.
         if odir == true then
             odir = PREFIX..choose(args.debug,'debug','release')
-            if not isdir(odir) then path.mkdir(odir) end
         end
     end
+    if odir and not isdir(odir) then path.mkdir(odir) end
+
     local pcr
     if not cr then
         -- generally a good idea for Unix shared libraries
-        if ptype == 'dll' and not WINDOWS then
-        -- altho Jay reckons it can be inefficient if applied needlessly...!!
+        -- for OS X, -fPIC is on by default
+        if ptype == 'dll' and not (WINDOWS or PLAT=='Darwin') then
             args.flags = concat(args.flags,'-fpic')
         end
         if args.precompiled_header then
@@ -2633,7 +2708,7 @@ local function _program(ptype,name,deps,lang)
             -- the source files are all compiled using this header
             args.flags = concat(args.flags,cpp_ch.use_compiled_header..args.precompiled_header)
         end
-        cr = _compile(args,deps,lang)
+        cr = _compile(args,args.compile_deps,lang)
         cr.output_dir = odir
     end
 
@@ -2648,7 +2723,7 @@ local function _program(ptype,name,deps,lang)
         local tname
         local btype = 'link'
         local link_prefix = ''
-        if args and (args.shared or args.dll) then ptype = 'dll' end
+        --if args and (args.shared or args.dll) then ptype = 'dll' end
         if ptype == 'exe' then
             tname = name..EXE_EXT
         elseif ptype == 'dll' then
@@ -2657,7 +2732,10 @@ local function _program(ptype,name,deps,lang)
             if C_LINK_PREFIX then link_prefix = C_LINK_PREFIX end
         elseif ptype == 'lib' then
             local dir,fname = splitpath(name)
-            tname = join(dir,lang.LIB_PREFIX..fname..lang.LIB_EXT)
+            tname = lang.LIB_PREFIX..fname..lang.LIB_EXT
+            if dir ~= '' then
+                tname = join(dir,tname)
+            end
             btype = 'lib'
         end
         -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
@@ -2687,16 +2765,20 @@ local function _program(ptype,name,deps,lang)
         t = new_target(target,dependencies,link_str,true)
         t.name = name
         t.libs = ptype ~= 'lib' and libs or args.libs
+        t.libflags = args.libflags
         t.link = lang
         t.input = name..lang.obj_ext
         t.lua = args.lua
+        t.llua = args.llua
         t.debug = args.debug
         t.ptype = ptype
-        cr.parent = t
+        if cr then cr.parent = t end
         t.compile_rule = cr
     end
-    cr.filter = lang.filter
-    cr.stdout = lang.stdout
+    if cr then
+        cr.filter = lang.filter
+        cr.stdout = lang.stdout
+    end
     -- @doc  'src' we have been given a list of source files, without extension
     if src then
         local ext = args.ext or lang.ext
