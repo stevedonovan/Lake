@@ -2442,16 +2442,17 @@ function update_lua_flags (ptype,args)
             if not LUA_INCLUDE_DIR then quit ("cannot find Lua include directory") end
             LUA_LIB_DIR = exists(path,'lib') or exists(path,'..\\lib')
             if not LUA_INCLUDE_DIR or not LUA_LIB_DIR then
-                quit("cannot find Lua include and/or library files\nSpecify LUA_INCLUDE and LUA_LIBDIR")
+                quit("cannot find Lua include and/or library files\nSpecify LUA_INCLUDE_DIR and LUA_LIBDIR")
             end
         else
             -- 'canonical' Lua install puts headers in sensible place
             if not find_include 'lua.h' then
                 -- except for Debian, which also supports 5.0
                 LUA_INCLUDE_DIR = find_include (LUA_LIBS..'/lua.h')
-                if not LUA_INCLUDE then
-                    quit ("cannot find Lua include files\nSpecify LUA_INCLUDE")
+                if not LUA_INCLUDE_DIR then
+                    quit ("cannot find Lua include files\nSpecify LUA_INCLUDE_DIR")
                 end
+                LUA_INCLUDE_DIR = splitpath(LUA_INCLUDE_DIR)
                 -- generally no need to link explicitly against Lua shared library
             else
                 LUA_INCLUDE_DIR = ''
