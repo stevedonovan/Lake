@@ -75,7 +75,11 @@ end
 
 file = {ext='*'}
 COPY = choose(WINDOWS,'copy','cp')
-file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
+file.compile = '$(COPY) $(DEPENDS) $(TARGET) $(QUIET_CMD)'
+if WINDOWS then
+    QUIET_CMD = '> nul'
+    file.filter = function() return nil end
+end
 
 function file.copy(src,dest)
     local inf,err = io.open(src,'r')
@@ -344,6 +348,77 @@ function utils.execute (cmd)
         return res1,res2
     end
 end
+
+local job_execute, jobs_clear
+local found_winapi, winapi = pcall(require, 'winapi')
+
+local function execute_wrapper (cmd,t,callback)
+    local tmpfile = file.temp()
+    local ok,code = utils.execute(cmd..' > '..tmpfile..' 2>&1')
+    local inf = io.open(tmpfile,'r')
+    callback(ok,code,inf)
+    inf:close()
+    os.remove(tmpfile)
+end
+
+local n_threads = 1
+
+if found_winapi then
+
+    local processes,outputs = {},{}
+    local comspec = os.getenv('COMSPEC')..' /c '
+
+    local function jobs_wait()
+        if #processes == 0 then return end
+        local idx,err = winapi.wait_for_processes(processes,false)
+        if err then return nil, err end
+        local item, p = outputs[idx], processes[idx]
+        local code = p:get_exit_code()
+        local inf,err = io.open(item.tmp,'r')
+        item.callback(code == 0, code, inf)
+        item.read:close()
+        inf:close()
+        os.remove(item.tmp)
+        p:close()
+        table.remove(processes,idx)
+        table.remove(outputs,idx)
+    end
+
+    function jobs_clear()
+        while #processes > 0 do jobs_wait() end
+    end
+
+    local current_rule
+
+    function job_execute (cmd,t,callback)
+        if n_threads < 2 then
+            execute_wrapper(cmd,t,callback)
+        else
+            if t.rule ~= current_rule then
+                --print('new rule',#processes)
+                while #processes > 0 do
+                    jobs_wait()
+                end
+                current_rule = t.rule
+            end
+            if #processes == n_threads then
+                jobs_wait()
+            end
+            if #processes < n_threads then
+                local tmpfile = file.temp()
+                print('launching',t.target)
+                local p,r = winapi.spawn_process(comspec..cmd..' > '..tmpfile..' 2>&1')
+                append(outputs,{read=r,callback=callback,tmp=tmpfile})
+                append(processes,p)
+            end
+        end
+    end
+
+else
+    job_execute = execute_wrapper
+    jobs_clear = function() end
+end
+
 
 -- given a path @path, return the directory part and a file part.
 -- if there's no directory part, the first value will be empty
@@ -1094,6 +1169,11 @@ function rt.add_target(r,tname,deps)
         if ddeps then
             append_list_unique(deps, ddeps)
         end
+--~         for name in list_(deps) do
+--~             if not exists(name) then
+--~                 quit("cannot find .d dependency '%s' for '%s'",name,tname)
+--~             end
+--~         end
     end
     -- finally the rule may have a set of prequisites that applies to all targets;
     -- this is used for explicit headers field when compiling.
@@ -1167,6 +1247,8 @@ end
 local function parse_deps_line (line)
     line = line:gsub('\n$','')
     -- each line consists of a target, and a list of dependencies; the first item is the source file.
+    local drive,rest = line:match '^(%a:)(\\.+)'
+    if drive then line = rest end
     local target,deps = line:match('([^:]+):%s*(.+)')
     if target and deps then
         return target,remove_quotes(split_list(deps))
@@ -1247,12 +1329,18 @@ function target_from_file(fname,target)
     return find_list(all_targets_list,target or 'target',fname)
 end
 
+local basic_print
+
 -- these won't be initially subsituted
 local basic_variables = {INPUT=true,TARGET=true,DEPENDS=true,LIBS=true,CFLAGS=true}
 
-function exec(s,dont_fail)
+function exec(s,dont_fail,t)
     local cmd = subst(s)
-    print(cmd)
+    if basic_print and t then
+        print('built',t.target)
+    else
+        print(cmd)
+    end
     if not TESTING then
         local ok,res = utils.execute(cmd)
         if not ok then
@@ -1264,6 +1352,10 @@ end
 
 function subst_all_but_basic(s)
     return subst(s,basic_variables)
+end
+
+local function nop (x)
+    return x
 end
 
 local current_rule,first_target,combined_targets = nil,nil,{}
@@ -1316,33 +1408,31 @@ function fire(t)
     CFLAGS = t.cflags
     if t.dir then change_dir(t.dir) end
     if ttype == 'string' and t.cmd ~= '' then -- it's a non-empty shell command
-        if t.rule and t.rule.filter and not TESTING then
+        if t.rule and not TESTING then
             local cmd = subst(t.cmd)
-            print(cmd)
-            local filter = t.rule.filter
-            local tmpfile = file.temp()
-            local redirect,outf
-            if t.rule.stdout then
-                redirect = '>'; outf = io.stdout
-            else
-                redirect = '2>'; outf = io.stderr
-            end
-            local ok,code = utils.execute(cmd..' '..redirect..' '..tmpfile)
-            filter({TARGET,INPUT,t.rule},'start')
-            local inf = io.open(tmpfile,'r')
-            for line in inf:lines() do
-                line = filter(line)
-                if line then outf:write(line,'\n') end
-            end
-            inf:close()
-            os.remove(tmpfile)
-            filter(t.base,'end')
-            if not ok then quit ("failed with code %d",code) end
+            job_execute(cmd,t,function(ok,code,inf)
+                local filter = t.rule.filter or nop
+                local outf = t.rule.stdout and io.stdout or io.stderr
+                if basic_print and ok then
+                    print('built',t.target)
+                else
+                    print(cmd)
+                end
+                filter({TARGET,INPUT,t.rule},'start')
+                for line in inf:lines() do
+                    line = filter(line)
+                    if line then outf:write(line,'\n') end
+                end
+                filter(t.base,'end')
+                if not ok then quit ("failed with code %d",code) end
+            end)
         else
-            exec(t.cmd)
+            jobs_clear()
+            exec(t.cmd,false,t)
         end
     elseif ttype == 'function' then -- a Lua function
-        (t.cmd)(t)
+        jobs_clear()
+        t.cmd(t)
     else -- nothing happened, but we are satisfied (empty command target)
         nbuild = nbuild - 1
     end
@@ -1597,6 +1687,11 @@ local function process_args()
                 DEBUG = true
             elseif opt == 'd' then
                 change_dir(getarg())
+            elseif opt == 'j' then
+                if not found_winapi then quit("no threading available") end
+                n_threads = tonumber(getarg())
+            elseif opt == 'b' then
+                basic_print = true
             elseif opt == 'p' then
                 lakefile = file.temp_copy(("tp,name = lake.deduce_tool('%s'); tp.program(name)"):format(arg[i+1]))
                 i = i + 1
@@ -1773,6 +1868,7 @@ function go()
         t.time = filetime(t.target)
         check(t.time,t)
     end
+    jobs_clear()
     if nbuild == 0 then
         if not synth_target then print 'lake: up to date' end
     end
@@ -1898,8 +1994,13 @@ function lake.set_flags(parms)
     if CC ~= 'cl' then -- must be 'gcc' or something compatible
         c.init_flags = function(debug,opt,strict)
             local flags
-            --flags = choose(debug,'-g',opt_flag('-',opt))
-            flags = (debug and '-g' or '') .. ' ' .. opt_flag('-',opt)
+            -- usually either debug build or optimized build,
+            -- but if debug is a string, there can be an optimization level as well
+            if type(debug) ~= 'string' then
+                flags = choose(debug,'-g',opt_flag('-',opt))
+            elseif type(debug) == 'string' then
+                flags = (debug and '-g' or '') .. ' ' .. opt_flag('-',debug)
+            end
             if strict then
                 -- @doc 'strict compile' (-s) uses -Wall for gcc; /WX for cl.
                 flags = flags .. ' -Wall'
@@ -2516,6 +2617,7 @@ local program_fields = {
     strict=true, -- strict compilation of files
     base=true, -- base directory for source and includes
     precompiled_header=true, -- provide a header to be precompiled and used
+    llua=true, -- name of Lua module being built
     ---- OS X support
     framework=true, -- link against framework (-framework flag)
     framework_dir=true, -- provide framework path (-F flag)
