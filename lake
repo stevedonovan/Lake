@@ -75,7 +75,8 @@ end
 
 file = {ext='*'}
 COPY = choose(WINDOWS,'copy','cp')
-file.compile = '$(COPY) $(DEPENDS) $(TARGET) $(QUIET_CMD)'
+file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
+
 
 if WINDOWS then
     QUIET_CMD = '> nul'
