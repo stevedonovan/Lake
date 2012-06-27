@@ -1,1 +1,8 @@
-c.program{'needs-foo',needs='foo'}
+
+lake('foo',arg[1])
+
+if arg[1] ~= 'clean' then
+    lake('.','-install foo.need')
+end
+
+c.program{'needs-foo',needs='foo-static'}

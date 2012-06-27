@@ -76,20 +76,33 @@ end
 file = {ext='*'}
 COPY = choose(WINDOWS,'copy','cp')
 file.compile = '$(COPY) $(DEPENDS) $(TARGET) $(QUIET_CMD)'
+
 if WINDOWS then
     QUIET_CMD = '> nul'
     file.filter = function() return nil end
 end
 
+function file.generate_target(r,tname,root)
+    local odir = r.output_dir
+    if root and odir then
+        tname = tname:sub(#root+2)
+        local d = path.dirname(path.join(odir,tname))
+        if not path.isdir(d) then
+            path.mkdir(d)
+        end
+        return tname
+    end
+end
+
 function file.copy(src,dest)
-    local inf,err = io.open(src,'r')
+    local inf,err = io.open(src,'rb')
     if err then return nil,err end
     local dir = path.splitpath(dest)
     if dir ~= '' and not path.isdir(dir) then
         local ok, e = path.mkdir(dir)
         if not ok then return nil,e end
     end
-    local outf,err = io.open(dest,'w')
+    local outf,err = io.open(dest,'wb')
     if err then inf:close(); return nil,err end
     outf:write(inf:read('*a'))
     outf:close()
@@ -338,7 +351,7 @@ local function split2(s,delim)
   return s:match('([^'..delim..']+)'..delim..'(.*)')
 end
 
-local lua52 = table.pack ~= nil
+local lua52 = rawget(_G,'setfenv') ~= nil
 
 function utils.execute (cmd)
     local res1,res2,res2 = os.execute(cmd)
@@ -349,8 +362,12 @@ function utils.execute (cmd)
     end
 end
 
-local job_execute, jobs_clear
-local found_winapi, winapi = pcall(require, 'winapi')
+local job_execute, jobs_clear, found_threads, winapi, posix, index_list
+if WINDOWS then
+    found_threads, winapi = pcall(require, 'winapi')
+else
+    found_threads, posix = pcall(require, 'posix')
+end
 
 local function execute_wrapper (cmd,t,callback)
     local tmpfile = file.temp()
@@ -363,23 +380,58 @@ end
 
 local n_threads = 1
 
-if found_winapi then
+if found_threads then
 
     local processes,outputs = {},{}
-    local comspec = os.getenv('COMSPEC')..' /c '
+    local spawn, wait
+    if winapi then
+        local comspec = os.getenv('COMSPEC')..' /c '
+
+        function spawn(cmd)
+            return winapi.spawn_process(comspec..cmd)
+        end
+
+        function wait(ps)
+            local idx,err = winapi.wait_for_processes(ps,false)
+            if err then return nil, err end
+            local p = processes[idx]
+            return idx,p:get_exit_code(),err
+        end
+    else
+        function spawn(cmd)
+            local cpid = posix.fork()
+            if cpid == 0 then
+                if posix.exec('/bin/sh','-c',cmd) == -1 then
+                    local msg,code = posix.errno()
+                    os.exit(code)
+                end
+            else
+                return cpid
+            end
+        end
+
+        function wait(ps)
+            local pid,status,code = posix.wait(-1)
+            if not pid then return nil,nil,code end
+            local idx = index_list(ps,pid)
+            return idx,code
+        end
+    end
 
     local function jobs_wait()
         if #processes == 0 then return end
-        local idx,err = winapi.wait_for_processes(processes,false)
+        local idx,code,err = wait(processes)
         if err then return nil, err end
         local item, p = outputs[idx], processes[idx]
-        local code = p:get_exit_code()
         local inf,err = io.open(item.tmp,'r')
         item.callback(code == 0, code, inf)
-        item.read:close()
+        if item.read then item.read:close() end
         inf:close()
+        if winapi then
+            p:close()
+        end
         os.remove(item.tmp)
-        p:close()
+
         table.remove(processes,idx)
         table.remove(outputs,idx)
     end
@@ -395,7 +447,6 @@ if found_winapi then
             execute_wrapper(cmd,t,callback)
         else
             if t.rule ~= current_rule then
-                --print('new rule',#processes)
                 while #processes > 0 do
                     jobs_wait()
                 end
@@ -406,8 +457,8 @@ if found_winapi then
             end
             if #processes < n_threads then
                 local tmpfile = file.temp()
-                print('launching',t.target)
-                local p,r = winapi.spawn_process(comspec..cmd..' > '..tmpfile..' 2>&1')
+                --print('launching',t.target,#processes)
+                local p,r = spawn(cmd..' > '..tmpfile..' 2>&1')
                 append(outputs,{read=r,callback=callback,tmp=tmpfile})
                 append(processes,p)
             end
@@ -457,9 +508,11 @@ local function splitext(path)
 end
 path.splitext = splitext
 
--- return the directory part of @path
-local function dirname(path)
-    local p1,p2 = splitpath(path)
+-- return the directory part of @P.
+-- If strict and the path is already a directory, return that
+local function dirname(P,strict)
+    if isdir(P) then return P end
+    local p1,p2 = splitpath(P)
     return p1
 end
 path.dirname = dirname
@@ -655,7 +708,7 @@ end
 
 list = {}
 
-local append_list,copy_list,copy_table,append_table,erase_list,concat_list,index_list,find_list
+local append_list,copy_list,copy_table,append_table,erase_list,concat_list,find_list
 
 function append_list(l1,l2)
     for i,v in ipairs(l2) do
@@ -1130,8 +1183,9 @@ end
 -- if there are no explicit dependencies, we assume that we are dependent on the input file.
 -- Also, any global dependencies that have been set for this rule with depends_on().
 -- In addition, we look for .d dependency files that have been auto-generated by the compiler.
-function rt.add_target(r,tname,deps)
+function rt.add_target(r,tname,deps,root)
     local in_ext,out_ext, ext = r.in_ext,r.out_ext
+    local lang = r.lang
     tname,ext = splitext(tname)
     if in_ext == '*' then -- assume that out_ext is also '*'
         in_ext = ext
@@ -1140,16 +1194,24 @@ function rt.add_target(r,tname,deps)
     -- we use the given input extension by default, but fall back to the default extension
     if ext == '' then ext = in_ext end
     local input = tname..ext
-    local base = basename(tname)
-    -- usually file.IN goes to file.OUT, but we can ask for file.IN.OUT
-    local target_name = base..out_ext
-    if r.lang and r.lang.appends_extension then
-        target_name = base..ext..out_ext
+
+    -- usually file.IN goes to file.OUT, but a 'language' can ask
+    -- for custom behaviour here.
+    local base, new_target_name
+    local target_name = tname..out_ext
+    if lang and lang.generate_target then
+        new_target_name = lang.generate_target(r,target_name,root)
     end
+    if not new_target_name then
+        target_name = basename(target_name)
+    else
+        target_name = new_target_name
+    end
+
     -- by default, target is created in cwd, but it can be put into a subdirectory
     if r.output_dir then
         target_name = join(r.output_dir,target_name)
-    elseif r.lang and r.lang.output_in_same_dir then
+    elseif lang and lang.output_in_same_dir then
         -- this is used by compilers like javac which generate output files
         -- within the same directory as the source files
         target_name = replace_extension(input,r.out_ext)
@@ -1164,16 +1226,11 @@ function rt.add_target(r,tname,deps)
     end
     table.insert(deps,1,input)
     -- we can be dependent on headers extracted from a .d file
-    if r.lang and r.lang.uses_dfile then
+    if lang and lang.uses_dfile then
         local ddeps = deps_from_d_file(replace_extension(target_name,'.d'))
         if ddeps then
             append_list_unique(deps, ddeps)
         end
---~         for name in list_(deps) do
---~             if not exists(name) then
---~                 quit("cannot find .d dependency '%s' for '%s'",name,tname)
---~             end
---~         end
     end
     -- finally the rule may have a set of prequisites that applies to all targets;
     -- this is used for explicit headers field when compiling.
@@ -1546,21 +1603,26 @@ end
 
 local function exists_lua(name) return exists(name..'.lua') end
 
-function lake.install_plugin (kind,arg)
-    -- lake.home will exist if we were called as a program...??
-    local home, name = lake.home, splitext(arg)
-    if kind == 'install-need' then
-        arg = exists_lua(arg..'.need')
-        if not arg then quit(("%s.need.lua not found"):format(arg)) end
-        file.copy(arg,home..'/lake/need/'..arg)
-    elseif kind == 'install-lang' then
-        arg = exists_lua(arg)
-        if not arg then quit(("%s.lua not found"):format(arg)) end
-        file.copy(arg,home..'/lake/lang/'..arg)
+--- either a file defining a need, like 'foo.need.lua' or one defining
+-- a language like 'boo.lang.lua'. The .lua extension is not necessary.
+function lake.install_plugin (parm)
+    local home = lake.home..'/lake/'
+    local fname = exists(parm) or exists_lua(parm)
+    if not fname then
+        quit(parm..'.lua not found!')
+    end
+    local package,kind = fname:match '([^.]+)%.(.+)%.'
+    if not package or not (kind == 'need' or kind == 'lang') then
+        quit('no NAME.need or NAME.lang file found ')
+    end
+    if kind == 'need' then
+        file.copy(fname, home..'needs/'..package..'.lua')
+    else
+        file.copy(fname, home..'lang/'..package..'.lua')
         -- patch the config file
         local config = join(home,'config.lua')
         local contents = {}
-        local req = "require 'lake.lang."..name.."'"
+        local req = "require 'lake.lang."..package.."'"
         local found
         if exists(config) then
             for line in io.lines(config) do
@@ -1572,8 +1634,6 @@ function lake.install_plugin (kind,arg)
             append(contents,req)
             file.write(config,table.concat(contents,'\n'))
         end
-    else
-        quit("unknown plugin kind "..kind)
     end
 end
 
@@ -1589,6 +1649,7 @@ local dir_stack = {}
 local push,pop = table.insert,table.remove
 
 function change_dir (path)
+    if not path then return end
     if path == '!' or path == '<' then
         lfs.chdir(pop(dir_stack))
         print('restoring directory')
@@ -1668,8 +1729,8 @@ local function process_args()
             elseif opt == 'h' or opt == '-help' then
                 print(usage)
                 os.exit(0)
-            elseif opt == 'install-lang' or opt == 'install-need' then
-                lake.install_plugin(opt,getarg())
+            elseif opt == 'install' then
+                lake.install_plugin(getarg())
                 os.exit(0)
             elseif opt == 't' then
                 TESTING = true
@@ -1688,7 +1749,7 @@ local function process_args()
             elseif opt == 'd' then
                 change_dir(getarg())
             elseif opt == 'j' then
-                if not found_winapi then quit("no threading available") end
+                if not found_threads then quit("no threading available; winapi/posix needed") end
                 n_threads = tonumber(getarg())
             elseif opt == 'b' then
                 basic_print = true
@@ -1744,7 +1805,7 @@ local function process_args()
     end
     lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
-    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake.exe' then
+    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]lake%.exe' then
         if use_lakefile then
             local orig_lakefile = lakefile
             lakefile = exists(lakefile or 'lakefile')
@@ -1953,7 +2014,7 @@ local known_globals = {
     EXE_EXT=true, --  extension of programs on this platform
     DLL_EXT=true, -- extension of shared libraries on this platform
     DIRSEP=true, -- directory separator on this platform
-    NO_COMBINE=true, -- don't allow the compiler to compile multiple files at once (if it is capable)
+    COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
     NODEPS=true, -- don't do automatic dependency generation
 }
 
@@ -2181,7 +2242,7 @@ function lake.set_flags(parms)
           -- the output by returning some modified string.
           if action == 'start' then
             target,rule = line[1],line[3]
-            file_pat = '.-%'..rule.in_ext..'$'
+            file_pat = '^[^:]-%'..rule.in_ext..'$'
             dfile = nil
           elseif action == 'end' then
             write_deps()
@@ -2278,7 +2339,7 @@ local function _compile(name,compile_deps,lang)
     if not args.nodeps and not NODEPS and lang.auto_deps then
         cflags = cflags .. ' ' .. lang.auto_deps
     end
-    local can_combine = not args.odir and not NO_COMBINE and lang.compile_combine
+    local can_combine = not args.odir and COMBINE and lang.compile_combine
     local compile_cmd = lang.compile
     if can_combine then compile_cmd = lang.compile_combine end
     local compile_str = subst_all_but_basic(compile_cmd)
@@ -2311,7 +2372,7 @@ function define_need (name,callback)
     extra_needs[name] = callback
 end
 
-local function examine_config_vars(package)
+local function examine_config_vars(package,subtype)
     -- @doc [needs] If we're trying to match a need 'frodo', then we
     -- generate FRODO_INCLUDE_DIR, FRODO_LIB_DIR, FRODO_LIBS, FRODO_DIR
     -- and look them up globally.  Not all of these are needed. For instance, if only
@@ -2367,6 +2428,9 @@ local function examine_config_vars(package)
         if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
         checkdir(libs,libs_v,package)
     end
+    if libs and CC == 'cl' and subtype == 'static' then
+        libs = libs..'_static'
+    end
     local res = {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
     if not next(res) then -- we found nuffink...
         res = nil
@@ -2406,20 +2470,25 @@ function lake.define_pkg_need (name,package)
     end)
 end
 
+local log = print
+
 -- @doc [needs] unknown needs searched in this order:
--- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then      pkg-config
+-- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then pkg-config
 
 local function handle_unknown_need (name)
     define_need(name,function()
-        local ok,needs,nfun
+        local ok,needs,nfun,needs_package
         local pack,sub = split2(name,'%-')
-        ok,nfun = pcall(require,'lake.needs.'..(pack or name))
+        needs_package = 'lake.needs.'..(pack or name)
+        log("trying to load "..needs_package,sub)
+        ok,nfun = pcall(require,needs_package)
         if ok then
-            return nfun(sub)
+            if type(nfun) == 'function' then return nfun(sub) end
+        else
+            local nfile = exists_lua(name..'.need')
+            if nfile then safe_dofile(nfile) end
         end
-        local nfile = exists_lua(name..'.need')
-        if nfile then safe_dofile(nfile) end
-        needs = examine_config_vars(name)
+        needs = examine_config_vars(pack,sub)
         if not needs then
             lake.define_pkg_need(name)
             needs = extra_needs[name]()
@@ -2550,9 +2619,10 @@ function update_lua_flags (ptype,args)
             if not find_include 'lua.h' then
                 -- except for Debian, which also supports 5.0
                 LUA_INCLUDE_DIR = find_include (LUA_LIBS..'/lua.h')
-                if not LUA_INCLUDE then
+                if not LUA_INCLUDE_DIR then
                     quit ("cannot find Lua include files\nSpecify LUA_INCLUDE")
                 end
+                LUA_INCLUDE_DIR = splitpath(LUA_INCLUDE_DIR)
                 -- generally no need to link explicitly against Lua shared library
             else
                 LUA_INCLUDE_DIR = ''
@@ -2662,7 +2732,6 @@ local function _program(ptype,name,deps,lang)
         --- the rest of the array will be considered as dependencies.
         name = args.name or args[1]
         deps = args.deps or tail(args)
-        if deps and #deps == 0 then deps = nil end
         args.debug = args.debug or DEBUG
         --- if the name contains wildcards, then we make up a new unique target
         --- that depends on all the files. So for instance 'c.program '*' will compile
@@ -2827,7 +2896,6 @@ local function _program(ptype,name,deps,lang)
         local tname
         local btype = 'link'
         local link_prefix = ''
-        --if args and (args.shared or args.dll) then ptype = 'dll' end
         if ptype == 'exe' then
             tname = name..EXE_EXT
         elseif ptype == 'dll' then
@@ -2886,15 +2954,20 @@ local function _program(ptype,name,deps,lang)
     -- @doc  'src' we have been given a list of source files, without extension
     if src then
         local ext = args.ext or lang.ext
+        local root
+        if args.recurse then
+            local first = type(src) == 'table' and src[1] or src
+            root = dirname(first,true)
+        end
         src = expand_args(src,ext,args.recurse,args.base)
         if except then
-            except = expand_args(except,ext,false,args.base)
+            except = expand_args(except,ext,false,args.base)  -- args.recurse?
             erase_list(src,except)
         end
         -- all these compile targets can depend on a precompiled header...
         if pcr then pcr = pcr:get_targets() end
 
-        for f in list_(src) do cr:add_target(f,pcr) end
+        for f in list_(src) do cr:add_target(f,pcr,root) end
     end
     return t,cr
 end
