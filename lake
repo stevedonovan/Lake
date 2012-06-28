@@ -1198,7 +1198,7 @@ function rt.add_target(r,tname,deps,root)
 
     -- usually file.IN goes to file.OUT, but a 'language' can ask
     -- for custom behaviour here.
-    local base, new_target_name
+    local new_target_name
     local target_name = tname..out_ext
     if lang and lang.generate_target then
         new_target_name = lang.generate_target(r,target_name,root)
@@ -1208,7 +1208,7 @@ function rt.add_target(r,tname,deps,root)
     else
         target_name = new_target_name
     end
-
+    local base = basename(tname)
     -- by default, target is created in cwd, but it can be put into a subdirectory
     if r.output_dir then
         target_name = join(r.output_dir,target_name)
