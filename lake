@@ -1621,7 +1621,7 @@ function lake.install_plugin (parm)
     else
         file.copy(fname, home..'lang/'..package..'.lua')
         -- patch the config file
-        local config = join(home,'config.lua')
+        local config = join(lake.home,'config.lua')
         local contents = {}
         local req = "require 'lake.lang."..package.."'"
         local found
@@ -1633,7 +1633,7 @@ function lake.install_plugin (parm)
         end
         if not found then
             append(contents,req)
-            file.write(config,table.concat(contents,'\n'))
+            file.write(config,table.concat(contents,'\n')..'\n')
         end
     end
 end

@@ -1,20 +1,16 @@
-
---f = file.group{src='common\\common.h',odir='include'}
+--- here the program has a _compile-time_ dependency on
+--- include/common.h.  That is, all the individual compilations
+--- inherit this dependency.
 
 join = path.join
 
-f = target(
-    join('include','common.h'),
-    {join('common','common.h')},
-    '$(COPY) $(DEPENDS) $(TARGET)'
-)
+f = file.group{src=join('common','common.h'),odir='include'}
 
 prog = c.program{'first',
     src = 'one common/common',
     incdir = 'include',
-    compile_deps =  f, -- 'include\\common.h' also works
+    compile_deps =  f
 }
-
 
 default {prog}
 
