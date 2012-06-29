@@ -1466,8 +1466,8 @@ function fire(t)
     SRC = t.src and table.concat(t.src,' ')
     if t.deps then
         local deps = t.deps
-        if t.link and t.link.massage_link then
-            deps = t.link.massage_link(t.name,deps,t)
+        if t.link_lang and t.link_lang.massage_link then
+            deps = t.link_lang.massage_link(t.name,deps,t)
         end
         DEPENDS = table.concat(deps,' ')
     end
@@ -1959,10 +1959,10 @@ end
 function lake.run(prog,args,istart)
     local args = parm_list_concat(args,istart)
     if istarget(prog) then
-        prog = prog.target
-        local lang = prog.rule and prog.rule.lang
+        local exe = prog.target        
+        local lang = prog.link_lang -- prog.rule and prog.rule.lang
         if lang and lang.runner then
-            return lang.runner(prog,args)
+            return lang.runner(exe,args)
         end
     end
     local ext = extension_of(prog)
@@ -2953,7 +2953,7 @@ local function _program(ptype,name,deps,lang)
         t.name = name
         t.libs = ptype ~= 'lib' and libs or args.libs
         t.libflags = args.libflags
-        t.link = lang
+        t.link_lang = lang
         t.input = name..lang.obj_ext
         t.lua = args.lua
         t.llua = args.llua
