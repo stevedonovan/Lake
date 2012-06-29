@@ -17,7 +17,7 @@ else
 end
 
 clr = {ext = '.cs',obj_ext='.?'}
-clr.link = '$(CSC) -nologo $(LIBS) -out:$(TARGET) $(SRC)'
+clr.link = '$(CSC) -nologo  $(LIBS) -out:$(TARGET) $(SRC)'
 -- do this because the extensions are the same on Unix
 clr.EXE_EXT = '.exe'
 clr.DLL_EXT = '.dll'
@@ -31,6 +31,19 @@ clr.flags_handler = function(self,args,compile)
     flags = '-debug'
   elseif args.optimize or OPTIMIZE then
     flags = '-optimize'
+  end
+  if args.deps then -- may be passed referenced assemblies as dependencies
+     local deps_libs = {}
+     for d in list(args.deps) do
+        if istarget(d) and d.ptype == 'dll' then
+            local target = path.splitext(d.target)
+            table.insert(deps_libs,target)
+        end
+     end
+     if #deps_libs > 0 then
+        args.libs = args.libs and lake.deps_arg(args.libs) or {}
+        list.extend(args.libs,deps_libs)
+     end
   end
   return flags
 end

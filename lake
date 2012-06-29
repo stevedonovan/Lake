@@ -352,7 +352,7 @@ local function split2(s,delim)
   return s:match('([^'..delim..']+)'..delim..'(.*)')
 end
 
-local lua52 = rawget(_G,'setfenv') ~= nil
+local lua52 = rawget(_G,'setfenv') == nil
 
 function utils.execute (cmd)
     local res1,res2,res2 = os.execute(cmd)
@@ -1958,12 +1958,13 @@ end
 -- or default to local execution of the program.
 function lake.run(prog,args,istart)
     local args = parm_list_concat(args,istart)
+    local exe
     if istarget(prog) then
-        local exe = prog.target        
         local lang = prog.link_lang -- prog.rule and prog.rule.lang
         if lang and lang.runner then
-            return lang.runner(exe,args)
+            return lang.runner(prog.target,args)
         end
+        prog = prog.target
     end
     local ext = extension_of(prog)
     local runner = interpreters[ext]
