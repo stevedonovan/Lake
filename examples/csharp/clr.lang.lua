@@ -5,11 +5,13 @@ if WINDOWS then
   if not utils.which(CSC) then
 	local ok,winapi = pcall(require,'winapi')
 	if not ok then quit 'you need winapi for this' end
-	local getenv = os.getenv
-	local net = getenv('WINDIR')..'/Microsoft.NET/Framework/v2*'
-	local candidates = path.files_from_mask(net)
+	local net = '/Microsoft.NET/Framework/v'
+    if DOTNET then
+        net = net .. DOTNET
+    end
+	local candidates = path.files_from_mask(ENV.WINDIR..net..'*')
 	if #candidates == 0 then quit("cannot find .NET") end
-	winapi.setenv('PATH',getenv'PATH'..';'..candidates[1])
+	ENV.PATH = ENV.PATH..';'..candidates[#candidates]
    end
 else
   CSC = 'gmcs'
@@ -26,11 +28,21 @@ clr.LIBPOST = '.dll'
 clr.DEFDEF = '-d:'
 clr.LIBPARM = '-r:'
 clr.flags_handler = function(self,args,compile)
+   -- compilation occurs during 'link' phase for C#
   local flags
   if args.debug or DEBUG then
     flags = '-debug'
   elseif args.optimize or OPTIMIZE then
     flags = '-optimize'
+  end
+  local subsystem = args.subsystem
+  if subsystem then
+    if subsystem == 'windows' then
+        subsystem = 'winexe'
+    end
+    flags = '-t:'..subsystem
+    -- clear it so that default logic doesn't kick in
+    args.subsystem = nil
   end
   if args.deps then -- may be passed referenced assemblies as dependencies
      local deps_libs = {}

@@ -386,7 +386,7 @@ if found_threads then
     local processes,outputs = {},{}
     local spawn, wait
     if winapi then
-        local comspec = os.getenv('COMSPEC')..' /c '
+        local comspec = env('COMSPEC')..' /c '
 
         function spawn(cmd)
             return winapi.spawn_process(comspec..cmd)
@@ -2731,7 +2731,7 @@ local function tail (t,istart)
 end
 
 local function _program(ptype,name,deps,lang)
-    local dependencies,src,except,cr,subsystem,args
+    local dependencies,src,except,cr,args
     local libs = LIBS
     if type(name) == 'string' then name = { name } end
     if type(name) == 'table' then
@@ -2760,7 +2760,6 @@ local function _program(ptype,name,deps,lang)
         if args.shared or args.dll then ptype = 'dll' end
         src = args.src
         except = args.exclude
-        subsystem = args.subsystem
         -- @doc lua=true is deprecated; prefer needs='lua' !
         if args.lua then
             update_lua_flags(ptype,args)
@@ -2927,8 +2926,8 @@ local function _program(ptype,name,deps,lang)
             btype = 'lib'
         end
         -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
-        if subsystem and WINDOWS then
-            libs = libs..' '..SUBSYSTEM..subsystem
+        if args.subsystem and WINDOWS then
+            libs = libs..' '..SUBSYSTEM..args.subsystem
         end
         local link_str = link_prefix..subst_all_but_basic(lang[btype])
         -- @doc conditional post-build step if a language defines a function 'post_build'
@@ -3075,5 +3074,15 @@ amt.__index = function(obj,name)
         return action_(name,...)
     end
 end
+
+ENV = setmetatable({},{
+    __index = function(self,key)
+        return env(key)
+    end;
+    __newindex = function(self,key,value)
+        local M = winapi or posix or quit("need winapi/posix for setenv")
+        M.setenv(key,value)
+    end
+})
 
 process_args()
