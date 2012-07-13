@@ -40,7 +40,7 @@ clr.flags_handler = function(self,args,compile)
     if subsystem == 'windows' then
         subsystem = 'winexe'
     end
-    flags = '-t:'..subsystem
+    flags = flags..' -t:'..subsystem
     -- clear it so that default logic doesn't kick in
     args.subsystem = nil
   end

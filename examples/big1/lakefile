@@ -1,1 +1,7 @@
+-- you can push this up on a multi-core machine;
+-- on Windows, the NUMBER_OF_PROCESSORS env variable can be used,
+-- On Linux, count the 'processor' lines in the pseudo-file /proc/cpuinfo
+
+lake.concurrent_jobs(2)
+
 c.program {'name',src='*'}

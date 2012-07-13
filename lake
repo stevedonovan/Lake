@@ -5,25 +5,35 @@
 -- Steve Donovan, 2007-2010
 
 local usage = [[
-Lake version 1.2  A Lua-based Build Engine
+Lake version 1.3  A Lua-based Build Engine
   lake <flags> <assigments> <target(s)>
-  -Flags:
+  * flags:
     -v verbose
+    -t test (show but don't execute commands)
     -n don't synthesize target
     -d initial directory
-    -t test (show but don't execute commands)
-    -s strict compile
-    -g debug build
+    -b basic print (don't show full commands)
+    -s don't compile strictly
+    -g debug build  (also DEBUG=1)
+    -j N run jobs in parallel where possible.
     -f FILE read a named lakefile
-    -e EXPR evaluate an expression
+    -e EXPR evaluate a lakefile expression
     -l FILE build a shared library/DLL
+    -lua FILE build a Lua C extension
     -p FILE build a program
     -w write out unsatisfied needs to lakeconfig.lua
     -lua FILE build a Lua binary extension
-  -assigmnents: arguments of the form VAR=STRING assign the string
-         to the global VAR
-  -target(s): any targets of the lakefile; if a file with a recognized
-          extension, build and run, passing any remaining arguments.
+    -install FILE install a new need or language
+
+  * assigmnents: arguments of the form VAR=STRING assign the string
+    to the global VAR. The env variable LAKE_PARMS may contain
+    extra assignments.
+
+  * target(s): any targets of the lakefile; if a file with a recognized
+    extension, build and run, passing any remaining arguments, unless -n
+    is specified. Lua scripts are run directly using Lake.
+
+  Without arguments, load a file called 'lakefile'.
 
 ]]
 
@@ -1675,6 +1685,13 @@ end
 
 lake.chdir = change_dir
 
+function lake.concurrent_jobs (nj)
+    if not found_threads then return nil,"no threading available; winapi/posix needed" end
+    if type(nj) ~= nil then return nil,"number of jobs must be a integer" end
+    n_threads = nj
+    return true
+end
+
 
 local function safe_dofile (name)
     if _DEBUG then
@@ -1754,14 +1771,14 @@ local function process_args()
             elseif opt == 'e' then
                 lakefile = file.temp_copy(getarg())
             elseif opt == 's' then
-                STRICT = true
+                STRICT = false
             elseif opt == 'g' then
                 DEBUG = true
             elseif opt == 'd' then
                 change_dir(getarg())
             elseif opt == 'j' then
-                if not found_threads then quit("no threading available; winapi/posix needed") end
-                n_threads = tonumber(getarg())
+                local ok, err = lake.concurrent_jobs (tonumber(getarg()))
+                if not ok then quit(err) end
             elseif opt == 'b' then
                 basic_print = true
             elseif opt == 'p' then
@@ -2179,8 +2196,16 @@ function lake.set_flags(parms)
         end
         c.flags_handler = function(lang,args,compile)
             local flags = ''
-            if compile and (args.dynamic or args.static == false) then
-                flags = flags .. ' /MD'
+            if compile then
+                if args.dynamic or args.static == false then
+                    flags = flags .. ' /MD'
+                end
+                flags = flags .. ' /D_CRT_SECURE_NO_DEPRECATE'
+                if args.debug or DEBUG then
+                    flags = flags .. ' /DDEBUG'
+                else
+                    flags = flags .. ' /DNDEBUG'
+                end
             end
             return flags
         end
@@ -2208,21 +2233,28 @@ function lake.set_flags(parms)
                 if extension_of(l) == '.dll' then l = replace_extension(l,'.lib') end
                 append(deps,l)
             end
-            -- if there was an explicit .def file, use it
-            local def = exists(name..'.def')
+            -- if there was an explicit .def file, use it; it will be relative to any base
+            local bname = t.basedir and path.join(t.basedir,name) or name
+            local def = exists(bname..'.def')
             if def then
                 append(deps,'/DEF:'..def)
-            elseif (t.lua or t.llua) and t.ptype == 'dll' then
+            elseif (t.lua or t.llua ~= nil) and t.ptype == 'dll' then
                 -- somewhat ugly hack: if no .def and this is a Lua extension, then make sure
-                -- the Lua extension entry point is visible.
+                -- the Lua extension entry point is visible. llua=false will suppress this,
+                -- if it's a DLL linked against Lua that is not itself an extension, or already
+                -- exports its symbols
                 local _,mname
-                if not t.llua then
+                if t.llua == nil then
                     _,mname = splitpath(name)
-                else
+                elseif type(t.llua) == 'string' then
                     mname = t.llua
+                else
+                    mname = nil
                 end
-                mname = mname:gsub('%.','_')
-                append(deps,' /EXPORT:luaopen_'..mname)
+                if mname then
+                    mname = mname:gsub('%.','_')
+                    append(deps,' /EXPORT:luaopen_'..mname)
+                end
             end
             -- a proper debug link should generate a PDB in the same directory as the executable
             if t.debug then
@@ -2292,6 +2324,9 @@ function lake.set_flags(parms)
         baselang.LIBDYNAMIC = '' --'msvcrt.lib' -- /NODEFAULTLIB:libcmt.lib'
         c.uses_dfile = 'noslash'
 
+        -- a hack: CL.EXE is quite happy with compiling a file as a compiled header,
+        -- but does not like /Fo$(TARGET) in this context. So we remove it...
+        cpp_ch.compile = cpp.compile:gsub('%S+$','')
         cpp_ch.obj_ext = '.pch'
         cpp_ch.use_compiled_header = '/Yu'
         cpp_ch.make_compiled_header = '/Yc /Tp'
@@ -2308,7 +2343,7 @@ function lake.output_filter (lang,filter)
     lang.filter = function(line,action)
         if not action then
             if old_filter then line = old_filter(line) end
-            return filter(line)
+            if line then return filter(line) end
         else
             if old_filter then old_filter(line,action) end
         end
@@ -2880,6 +2915,7 @@ local function _program(ptype,name,deps,lang)
         if args.precompiled_header then
             -- this is a header which must be specially compiled with the correct
             -- incantations
+            local precomp = args.precompiled_header
             local oflags, odeps = args.flags, args.nodeps
             if cpp_ch.make_compiled_header then
                 args.flags = concat(oflags,cpp_ch.make_compiled_header)
@@ -2887,10 +2923,10 @@ local function _program(ptype,name,deps,lang)
             args.nodeps = true
             pcr = _compile(args,nil,cpp_ch)
             pcr.output_dir = odir
-            pcr:add_target(args.precompiled_header)
+            pcr:add_target(precomp)
             args.flags, args.nodeps = oflags, odeps
             -- the source files are all compiled using this header
-            args.flags = concat(args.flags,cpp_ch.use_compiled_header..args.precompiled_header)
+            args.flags = concat(args.flags,cpp_ch.use_compiled_header..precomp)
         end
         cr = _compile(args,args.compile_deps,lang)
         cr.output_dir = odir
@@ -2959,6 +2995,7 @@ local function _program(ptype,name,deps,lang)
         t.llua = args.llua
         t.debug = args.debug
         t.ptype = ptype
+        t.basedir = args.base
         if cr then cr.parent = t end
         t.compile_rule = cr
     end
