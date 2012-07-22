@@ -237,11 +237,11 @@ Consider the problem of working with an arbitrary set of `.c` files. A programme
 
 Again, `default` takes a list of target objects, which have been explicitly generated in a loop over all files matching the file mask `*.c`.  `lake` provides functions like `mask` and `change_extension` to make working with files and directories easier but there is a more elegant way of solving the problem using `rule`:
 
-    crule = rule('.c','.bak','copy $(INPUT) $(TARGET)')
+    crule = rule('.bak','.c','copy $(INPUT) $(TARGET)')
     crule '*.c'
     default (crule)
 
-A `lake` rule is constructed by `rule`, and the arguments are input extension, output extension, and command (as passed to `target`).  A rule object is a factory for creating targets, and it is callable; it can be passed a target name, or a file mask.
+A `lake` rule is constructed by `rule`, and the arguments are output extension, input extension, and command (as passed to `target`) - that is, in the same order as `target`. (earlier versions of `lake` had this the other way around.)  A rule object is a factory for creating targets, and it is callable; it can be passed a target name, or a file mask.
 
 Note the `INPUT` variable; this is more specific than `DEPENDS` - generally a target may depend on many files, but the rule defines the input precisely as `NAME.in_ext`. This little lakefile shows the difference; here the target depends on two files, and `$(DEPENDS)` is always the dependencies separated by spaces.
 
@@ -263,14 +263,14 @@ As it stands, this rule is very platform-dependent. But a lakefile is just a Lua
     else
         COPY = 'cp'
     end
-    crule = rule('.c','.bak','$(COPY) $(INPUT) $(TARGET)')
+    crule = rule('.bak','.c','$(COPY) $(INPUT) $(TARGET)')
     default (crule '*.c')
 
 There is an important different between an ordinary global like `COPY` and basic variables like `INPUT`. Basic variables are only substituted when the target action 'fires'; the initial set is `INPUT,TARGET,DEPENDS,LIBS,CFLAGS`.
 
 Another example is converting image files using [ImageMagick](http://www.imagemagick.org/), which provides `convert`, the Swiss Army Knife of file converters.
 
-    to_png = rule('.jpg','.png',
+    to_png = rule('.png','.jpg',
       'convert $(INPUT) $(TARGET)'
     )
 
@@ -1109,7 +1109,7 @@ This is an important activity, and it's useful to have some tool support.
 
 Consider `examples/lua`.  We want to run some Lua scripts against the result `mylib`. They must all run if `mylib` changes, and individual tests must run if updated or created.  The idea is to construct a rule which makes up a fake target for each test run, and then populate the rule from the `test` directory; this is made explicitly dependent on `mylib`
 
-    lt = rule('.lua','.output','lua $(INPUT) > $(TARGET)')
+    lt = rule('.output','.lua','lua $(INPUT) > $(TARGET)')
 
     lt ('test/*',mylib)
 

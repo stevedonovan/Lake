@@ -24,7 +24,7 @@ clr.link = '$(CSC) -nologo  $(LIBS) -out:$(TARGET) $(SRC)'
 clr.EXE_EXT = '.exe'
 clr.DLL_EXT = '.dll'
 clr.LINK_DLL = '-t:library'
-clr.LIBPOST = '.dll'
+clr.LIBPOST = '.dll '
 clr.DEFDEF = '-d:'
 clr.LIBPARM = '-r:'
 clr.flags_handler = function(self,args,compile)
@@ -64,6 +64,17 @@ if not WINDOWS then
     clr.runner = function(prog,args)
         exec('mono '..prog..args)
     end
+end
+
+clr.process_needs = function(ptype,args)
+  for need in list(args.needs) do
+    if need == 'winforms' then
+	lake.append_to_field(args,'libs','System.Windows.Forms System.Drawing')
+	--args.libs = (args.libs or '').. ' System.Windows.Forms System.Drawing'
+    else
+
+    end
+  end
 end
 
 lake.add_prog(clr)

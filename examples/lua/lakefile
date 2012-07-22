@@ -3,7 +3,7 @@
 mylib = c.shared{'mylib',needs='lua'}
 
 -- define a rule that runs a Lua file and captures its output
-lt = rule('.lua','.output',LUA_EXE..' $(INPUT) > $(TARGET)')
+lt = rule('.output','.lua',LUA_EXE..' $(INPUT) > $(TARGET)')
 
 -- populate the rule with all Lua files in the test subdir
 lt ('test/*',mylib)
