@@ -890,7 +890,7 @@ local readlines = utils.readlines
 
 -- for debug purposes: dump out a table
 function dump(ls,msg)
-    print ('<<<',msg)
+    print ('<<',msg or '')
     if type(ls) == 'table' then
         for i,v in pairs(ls) do
             print(i,v)
@@ -1023,7 +1023,7 @@ local extensions = {
     ['.f'] = f, ['.for'] = f, ['.f90'] = f,
 }
 
-local deps_args
+local deps_args, isrule, istarget
 
 function lake.register(lang,extra)
     extensions[lang.ext] = lang
@@ -1043,29 +1043,44 @@ function process_var_pair(a)
     end
 end
 
--- @doc dependencies are stored as lists, but if you go through deps_arg, then any string
--- delimited with ' ' or ',' will be converted into an appropriate list.
--- This function is guaranteed to return a plain list, and will wrap other objects like
--- targets and rules appropriately. Target lists are extracted.
-function deps_arg(deps,base)
-    local T = type(deps)
-    if T=='table' and not is_simple_list(deps) then
-        local tl = get_target_list(deps)
-        if tl then
-            return tl
-        else
-            return {deps}
-        end
-    end
-    if T=='string' then
-        deps = split_list(deps)
-    elseif T~='table' then
-        --quit("deps_arg must be passed a string or table; got "..T)
-    end
+local function rebase (deps,base)
     if base then
         for i = 1,#deps do
             deps[i] = join(base,deps[i])
         end
+    end
+    return deps
+end
+
+-- @doc dependencies are stored as lists, but if you go through deps_arg, then any string
+-- delimited with ' ' or ',' will be converted into an appropriate list.
+-- This function is guaranteed to return a plain list, and will wrap other objects like
+-- targets and rules appropriately. Strings, targets, rules and target lists are
+-- allowed.
+function deps_arg(deps,base,expand_rule)
+    local T = type(deps)
+    if T=='table' and not is_simple_list(deps) then
+        if expand_rule and isrule(deps) then return deps:get_targets()
+        else
+            local tl = get_target_list(deps)
+            if not tl and istarget(deps) then
+                tl = {deps}
+            end
+            if tl then
+                return column_list(tl,'target')
+            else
+                return {deps}
+            end
+        end
+    end
+    if T=='string' then
+        return rebase(split_list(deps),base)
+    elseif T=='table' then
+        local res = {}
+        for i = 1,#deps do
+            append_list(res,deps_arg(deps[i],base))
+        end
+        deps = res
     end
     return deps
 end
@@ -1076,38 +1091,23 @@ lake.deps_arg = deps_arg
 -- as well as handling lists as strings. If the argument is a table, it will attempt
 -- to expand each string - e.g. {'a','b c'} => {'a','b','c'}
 function expand_args(src,ext,recurse,base)
-    if type(src) == 'table' then
-        local res = {}
-        for s in list_(src) do
-            for l in list_(split_list(s)) do
-                if base then l = join(base,l) end
-                append_list(res,expand_args(l,ext,recurse))
-            end
+    local items = deps_arg(src,base,true)
+    local res = {}
+    for i,item in ipairs(items) do
+        if ext and isdir(item) and not isfile(item..ext) then
+            item = join(item,'*') -- directory is an implicit wildcard
         end
-        return res
-    end
-    local items = split_list(src)
-    if #items > 1 then return expand_args(items,ext,recurse,base) end
-    src = items[1]
-    -- @doc 'src' if it is a directory, then regard that as an implicit wildcard
-    if base then src = join(base,src) end
-    if ext and isdir(src) and not isfile(src..ext) then
-        src = src..'/*'
-    end
-    if src:find('%*') then
-        if src:find '%*$' then src = src..ext end
-        return files_from_mask(src,recurse)
-    else
-        local res = deps_arg(src) --,base)
-        if ext then
-            -- add the extension to the list of files, unless there's already an extension...
-            for i = 1,#res do
-                if extension_of(res[i]) == '' then res[i] = res[i]..ext end
-            end
+        if item:find '%*' then
+            if item:find '%*$' then item = item..(ext or '*') end
+            append_list(res,files_from_mask(item,recurse))
+        else
+            if ext and extension_of(item)=='' then item = item..ext end
+            append(res,item)
         end
-        return res
     end
+    return res
 end
+
 lake.expand_args = expand_args
 
 function utils.quote(fun)
@@ -1120,6 +1120,10 @@ local tmt,tcnt = {},1
 
 function istarget (t)
     return type(t) == 'table' and getmetatable(t) == tmt
+end
+
+function tmt:__tostring ()
+    return 'target: '..self.target..(self.rule and tostring(self.rule) or '')
 end
 
 local function new_target(tname,deps,cmd,upfront)
@@ -1176,15 +1180,20 @@ rt.__index = rt
 -- create a rule object, mapping input files with extension @in_ext to
 -- output files with extension @out_ext, using an action @cmd
 -- Most of the customization of rules comes from setting a lang field.
-function rule(in_ext,out_ext,cmd)
+function rule(out_ext,in_ext,cmd,label)
     local r = {}
     r.in_ext = in_ext
     r.out_ext = out_ext
     r.cmd = cmd
     r.targets = {}
+    r.label = label
     r.depends_on = rt.depends_on
     setmetatable(r,rt)
     return r
+end
+
+function rt:__tostring ()
+    return 'rule: '..(self.label or self.cmd)..' ('..#self.targets..')'
 end
 
 -- this is used by the CL output parser: e.g, cl will put out 'hello.c' and this
@@ -1284,6 +1293,7 @@ function rt.__call(r,tname,deps)
     return r
 end
 
+
 function rt:get_targets()
     local ldeps =  column_list(self.targets,'target')
     if #ldeps == 0 and self.parent then
@@ -1298,8 +1308,9 @@ function rt:get_targets()
     end
 end
 
-local function isrule(r)
-    return r.targets ~= nil
+function isrule(r)
+    --# return r.targets ~= nil
+    return getmetatable(r) == rt
 end
 
 function rt.depends_on(r,s)
@@ -1368,7 +1379,9 @@ function rules_from_deps(file,extract_include_paths)
 end
 
 function get_target_list (t)
-    if type(t) == 'table' and t.target_list then return t.target_list end
+    if type(t) == 'table' then
+        if t.target_list then return t.target_list end
+    end
 end
 
 function make_target_list(ls)
@@ -2392,7 +2405,7 @@ local function _compile(name,compile_deps,lang)
     local compile_str = subst_all_but_basic(compile_cmd)
     local ext = args and args.ext or lang.ext
 
-    local cr = rule(ext,lang.obj_ext or ext,compile_str)
+    local cr = rule(lang.obj_ext or ext,ext,compile_str,lang.label or lang.ext)
 
     -- @doc 'compile_deps' can provide a list of files which all members of the rule
     -- are dependent on.
@@ -2415,9 +2428,10 @@ end
 
 local extra_needs = {}
 
-function define_need (name,callback)
+local function define_need (name,callback)
     extra_needs[name] = callback
 end
+lake.define_need = define_need
 
 local function examine_config_vars(package,subtype)
     -- @doc [needs] If we're trying to match a need 'frodo', then we
@@ -2547,16 +2561,18 @@ local function handle_unknown_need (name)
     end)
 end
 
-local function append_to_field (t,name,arg)
-    if arg and #arg > 0 then
+local function append_to_field (t,name,value)
+    if value then
+        value = deps_arg(value)
         if not t[name] then
             t[name] = {}
         elseif type(t[name]) == 'string' then
             t[name] = deps_arg(t[name])
         end
-        append_list(t[name],deps_arg(arg))
+        append_list(t[name],value)
     end
 end
+lake.append_to_field = append_to_field
 
 -- @doc [needs] these are currently the built-in needs supported by Lake
 local builtin_needs = {math=true,readline=true,dl=true,sockets=true,lua=true}
@@ -2564,16 +2580,8 @@ local builtin_needs = {math=true,readline=true,dl=true,sockets=true,lua=true}
 local update_lua_flags  -- forward reference
 
 local function update_needs(ptype,args)
-    local needs = args.needs
-    -- @doc [needs] extra needs for all compile targets can be set with the NEEDS global.
-    if NEEDS then
-        if needs then needs = needs .. ' ' .. NEEDS
-        else needs = NEEDS
-        end
-    end
-    needs = deps_arg(needs)
-    local libs,incdir = {},{}
-    for need in list_(needs) do
+    local libs = {}
+    for need in list_(args.needs) do
         if not extra_needs[need] and not builtin_needs[need] then
             handle_unknown_need(need)
         end
@@ -2588,10 +2596,7 @@ local function update_needs(ptype,args)
                 if res.flags then args.flags = concat_str(args.flags,res.flags,true) end
             end
         else
-            if need == 'lua' then
-                update_lua_flags(ptype,args)
-                args.lua = true
-            elseif not WINDOWS then
+            if not WINDOWS then
                 if need == 'math' then append(libs,'m')
                 elseif need == 'readline' then
                     append(libs,'readline')
@@ -2606,8 +2611,9 @@ local function update_needs(ptype,args)
             end
         end
     end
-    append_to_field(args,'libs',libs)
-    append_to_field(args,'incdir',incdir)
+    if #libs > 0 then
+        append_to_field(args,'libs',libs)
+    end
 end
 
 lake.define_pkg_need('gtk','gtk+-2.0')
@@ -2635,7 +2641,8 @@ local function find_lua_dll (path)
     return exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
 end
 
-function update_lua_flags (ptype,args)
+function update_lua_flags ()
+    local res = {}
     if not LUA_LIBS then
         LUA_LIBS = 'lua5.1'
     end
@@ -2677,28 +2684,31 @@ function update_lua_flags (ptype,args)
             end
         end
     end
-    args.incdir = concat_str(args.incdir,LUA_INCLUDE_DIR)
+    res.incdir = LUA_INCLUDE_DIR
     local use_import_lib = LUA_LIB_DIR
     if WINDOWS then
         -- recommended practice for MinGW is to link directly against the DLL
         if CC=='gcc' and not using_LfW then
-            args.libflags = LUA_DLL
+            res.libs = LUA_DLL
             use_import_lib = false
         else
-            args.libs = concat_str(args.libs,LUA_LIBS)
+            res.libs = LUA_LIBS
         end
     end
     if using_LfW then -- specifically, Lua for Windows
         if CC=='gcc' then -- force link against VS2005 runtime
-            args.libs = concat_str(args.libs,'msvcr80')
+            append(res.libs,'msvcr80')
         else -- CL link may assume the runtime is installed
-            args.dynamic = true
+            res.libflags = '/MD'
         end
     end
     if use_import_lib then
-        args.libdir = concat_str(args.libdir,LUA_LIB_DIR)
+        res.libdir = LUA_LIB_DIR
     end
+    return res
 end
+
+define_need('lua',update_lua_flags)
 
 ----- end of handling needs -----------
 
@@ -2795,13 +2805,15 @@ local function _program(ptype,name,deps,lang)
         if args.shared or args.dll then ptype = 'dll' end
         src = args.src
         except = args.exclude
-        -- @doc lua=true is deprecated; prefer needs='lua' !
-        if args.lua then
-            update_lua_flags(ptype,args)
-        end
         -- @doc 'needs' specifying libraries etc by 'needs', not explicitly
         if args.needs or NEEDS then
-            update_needs(ptype,args)
+            -- @doc [needs] extra needs for all compile targets can be set with the NEEDS global.
+            append_to_field(args,'needs',NEEDS)
+            if lang.process_needs then
+                lang.process_needs(ptype,args)
+            else
+                update_needs(ptype,args)
+            end
         end
         -- @doc 'libdir' specifying the path for finding libraries
         if args.libdir then
@@ -2856,13 +2868,12 @@ local function _program(ptype,name,deps,lang)
         if args.libflags then
             libs = libs..args.libflags
             if not args.defines then args.defines = '' end
-            --args.defines = args.defines .. '_DLL'
         end
         if args.strip then
             libs = libs..lang.STRIP
         end
         -- @doc 'rules' explicitly providing input targets! 'inputs' is a synonym
-        if args.inputs then args.rules = args.inputs end
+        args.rules = args.rules or args.inputs
         if args.rules then
             cr = args.rules
             -- @doc 'rules' may be a .deps file
@@ -3022,6 +3033,7 @@ local function _program(ptype,name,deps,lang)
         if cr then
             for f in list_(src) do cr:add_target(f,pcr,root) end
         else
+            -- for languages where compilation occurs at 'link' stage (e.g. C#)
             t.src = src
             -- and update dependencies!!
             target_add_deps(t,src)
