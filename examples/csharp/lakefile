@@ -3,11 +3,11 @@ if arg[1] ~= 'clean' and (REINSTALL or not clr) then
   require 'lake.lang.clr'
 end
 
-clr.shared{'out',src='MyClass',needs='winforms'}
+--clr.shared{'out',src='MyClass',needs='winforms'}
 
 --clr.shared{'out',src='*',libs='System.Windows.Forms System.Drawing'}
 
---clr.program{'out',src='MyClass'}
+clr.program{'out',src='MyClass'}
 
 
 

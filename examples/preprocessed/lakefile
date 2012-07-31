@@ -1,0 +1,13 @@
+-- rule that converts .l to .c files
+L = rule('.c','.l','lua prepro.lua $(INPUT) $(TARGET)')
+
+-- add targets to the rule
+-- (can also say L '*.l')
+L 'lib.l'
+L 'util.l'
+
+-- src may contain rules and targets, as well as filenames
+prog = c.program{'main', src = {L,'main'}}
+
+default {prog}
+

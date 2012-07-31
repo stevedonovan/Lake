@@ -3,15 +3,15 @@
 if WINDOWS then
   CSC = 'csc'
   if not utils.which(CSC) then
-	local ok,winapi = pcall(require,'winapi')
-	if not ok then quit 'you need winapi for this' end
-	local net = '/Microsoft.NET/Framework/v'
+    local ok,winapi = pcall(require,'winapi')
+    if not ok then quit 'you need winapi for this' end
+    local net = '/Microsoft.NET/Framework/v'
     if DOTNET then
         net = net .. DOTNET
     end
-	local candidates = path.files_from_mask(ENV.WINDIR..net..'*')
-	if #candidates == 0 then quit("cannot find .NET") end
-	ENV.PATH = ENV.PATH..';'..candidates[#candidates]
+    local candidates = path.files_from_mask(ENV.WINDIR..net..'*')
+    if #candidates == 0 then quit("cannot find .NET") end
+    ENV.PATH = ENV.PATH..';'..candidates[#candidates]
    end
 else
   CSC = 'gmcs'
@@ -69,10 +69,7 @@ end
 clr.process_needs = function(ptype,args)
   for need in list(args.needs) do
     if need == 'winforms' then
-	lake.append_to_field(args,'libs','System.Windows.Forms System.Drawing')
-	--args.libs = (args.libs or '').. ' System.Windows.Forms System.Drawing'
-    else
-
+        lake.append_to_field(args,'libs','System.Windows.Forms System.Drawing')
     end
   end
 end
