@@ -46,6 +46,7 @@ local all_targets_list = {}
 local attributes = lfs.attributes
 local env = os.getenv
 local unpack = unpack or table.unpack
+local log = print
 
 local TMPSPEC = '_t_.spec'
 local specfile
@@ -364,7 +365,11 @@ end
 
 local lua52 = rawget(_G,'setfenv') == nil
 
-function utils.execute (cmd)
+function utils.execute (cmd,quiet)
+    if quiet then
+        local null = " 2>&1 >"..choose(WINDOWS,'NUL','/dev/null')
+        cmd = cmd .. null
+    end
     local res1,res2,res2 = os.execute(cmd)
     if not lua52 then
         return res1==0,res1
@@ -380,9 +385,19 @@ else
     found_threads, posix = pcall(require, 'posix')
 end
 
+local function command_line (cmd)
+    local tmpfile,cmdline = file.temp()
+    if cmd:match '>%s*%S+$' then
+        cmdline = cmd..' 2> '..tmpfile
+    else
+        cmdline = cmd..' > '..tmpfile..' 2>&1'
+    end
+    return cmdline,tmpfile
+end
+
 local function execute_wrapper (cmd,t,callback)
-    local tmpfile = file.temp()
-    local ok,code = utils.execute(cmd..' > '..tmpfile..' 2>&1')
+    local cmdline,tmpfile = command_line(cmd)
+    local ok,code = utils.execute(cmdline)
     local inf = io.open(tmpfile,'r')
     callback(ok,code,inf)
     inf:close()
@@ -467,9 +482,8 @@ if found_threads then
                 jobs_wait()
             end
             if #processes < n_threads then
-                local tmpfile = file.temp()
-                --print('launching',t.target,#processes)
-                local p,r = spawn(cmd..' > '..tmpfile..' 2>&1')
+                local cmdline,tmpfile = command_line(cmd)
+                local p,r = spawn(cmdline)
                 append(outputs,{read=r,callback=callback,tmp=tmpfile})
                 append(processes,p)
             end
@@ -696,7 +710,7 @@ function utils.remove(items)
     end
     forall(items,function(f)
         if os.remove(f) then
-            print ('removing',f)
+            log ('removing',f)
         end
     end)
 end
@@ -870,35 +884,18 @@ local function parm_list_concat(ls,istart)
     return s
 end
 
--- readlines(f) works like f:lines(), except it will handle lines separated by '\'
-function utils.readlines(f)
-    return function()
-        local line = ''
-        repeat
-            local l = f:read()
-            if not l then return nil end
-            local last = l:sub(-1,-1)
-            if last == '\\' then
-                l = l:sub(1,-2)
-            end
-            line = line..l
-        until last ~= '\\'
-        return line
-    end
-end
-local readlines = utils.readlines
 
 -- for debug purposes: dump out a table
 function dump(ls,msg)
-    print ('<<',msg or '')
+    log ('<<',msg or '')
     if type(ls) == 'table' then
         for i,v in pairs(ls) do
-            print(i,v)
+            log(i,v)
         end
     else
-        print(ls)
+        log(ls)
     end
-    print '>>'
+    log '>>'
 end
 
 function utils.which (prog)
@@ -1078,7 +1075,7 @@ function deps_arg(deps,base,expand_rule)
     elseif T=='table' then
         local res = {}
         for i = 1,#deps do
-            append_list(res,deps_arg(deps[i],base))
+            append_list(res,deps_arg(deps[i],base,expand_rule))
         end
         deps = res
     end
@@ -1094,15 +1091,17 @@ function expand_args(src,ext,recurse,base)
     local items = deps_arg(src,base,true)
     local res = {}
     for i,item in ipairs(items) do
-        if ext and isdir(item) and not isfile(item..ext) then
-            item = join(item,'*') -- directory is an implicit wildcard
-        end
-        if item:find '%*' then
-            if item:find '%*$' then item = item..(ext or '*') end
-            append_list(res,files_from_mask(item,recurse))
-        else
-            if ext and extension_of(item)=='' then item = item..ext end
-            append(res,item)
+        if type(item) == 'string' then
+            if ext and isdir(item) and not isfile(item..ext) then
+                item = join(item,'*') -- directory is an implicit wildcard
+            end
+            if item:find '%*' then
+                if item:find '%*$' then item = item..(ext or '*') end
+                append_list(res,files_from_mask(item,recurse))
+            else
+                if ext and extension_of(item)=='' then item = item..ext end
+                append(res,item)
+            end
         end
     end
     return res
@@ -1126,6 +1125,16 @@ function tmt:__tostring ()
     return 'target: '..self.target..(self.rule and tostring(self.rule) or '')
 end
 
+local function remove_quotes (ls)
+    if not ls then return ls end
+    for i,s in ipairs(ls) do
+        if type(s) == 'string' and s:find '^"' then
+            ls[i] = s:sub(2,-2)
+        end
+    end
+    return ls
+end
+
 local function new_target(tname,deps,cmd,upfront)
     local t = setmetatable({},tmt)
     if tname == '*' then
@@ -1133,7 +1142,7 @@ local function new_target(tname,deps,cmd,upfront)
         tcnt = tcnt + 1
     end
     t.target = tname
-    t.deps = deps_arg(deps)
+    t.deps = remove_quotes(deps_arg(deps))
     t.cmd = cmd
     if upfront then
         table.insert(all_targets_list,1,t)
@@ -1147,8 +1156,8 @@ local function new_target(tname,deps,cmd,upfront)
             local oldcmd = specfile:read()
             if oldcmd ~= cmd then
                 if verbose then
-                    print(oldcmd); print(cmd)
-                    print('command changed: removing '..tname)
+                    log(oldcmd); log(cmd)
+                    log('command changed: removing '..tname)
                 end
                 os.remove(tname)
             end
@@ -1201,6 +1210,10 @@ end
 function rt.deps_filename (r,name)
     local t = find_list(r.targets,'base',splitext(name))
     return replace_extension(t.target,'.d'), t.input
+end
+
+local function canonical_win (p)
+    return p:gsub('/','\\'):lower()
 end
 
 -- add a new target to a rule object, with name @tname and optional dependencies @deps.
@@ -1322,14 +1335,6 @@ function rt.depends_on(r,s)
     end
 end
 
-local function remove_quotes (ls)
-    for i,s in ipairs(ls) do
-        if s:find '^"' then
-            ls[i] = s:sub(2,-2)
-        end
-    end
-    return ls
-end
 
 local function parse_deps_line (line)
     line = line:gsub('\n$','')
@@ -1338,7 +1343,20 @@ local function parse_deps_line (line)
     if drive then line = rest end
     local target,deps = line:match('([^:]+):%s*(.+)')
     if target and deps then
-        return target,remove_quotes(split_list(deps))
+        -- paths-with-spaces remain a nuisance!
+        -- cl will always put these in quotes, but gcc escapes spaces
+        -- Internally, Lake keeps such filenames in quotes
+        local esc,repl = '\\ ','\001'
+        local escaped = deps:match(esc)
+        if escaped then
+            deps = deps:gsub(esc,repl)
+        end
+        deps = split_list(deps)
+        if escaped then for i = 1,#deps do
+            local f = deps[i]:gsub(repl,' ')
+            deps[i] = quote_if_necessary(f)
+        end end
+        return target,deps
     end
 end
 
@@ -1346,37 +1364,12 @@ function deps_from_d_file(fname)
     local line,err = file.read(fname)
     if not line or #line == 0 then return false,err end
     local _,deps = parse_deps_line(line:gsub(' \\',' '))
+    if WINDOWS then for i = 1,#deps do
+        deps[i] = canonical_win(deps[i])
+    end end
     return deps
 end
 
-function rules_from_deps(file,extract_include_paths)
-    extract_include_paths = not extract_include_paths -- default is true!
-    local f,err = io.open(file,'r')
-    if not f then quit(err) end
-    local rules = {}
-    for line in readlines(f) do  -- will respect '\'
-        if not line:find('^#') then -- ignore Make-style comments
-            local target,deps = parse_deps_line(line)
-            if target and deps then
-                -- make a rule to translate the source file into an object file,
-                -- and set the include paths specially, unless told not to...
-                local paths
-                if extract_include_paths then
-                    paths = {}
-                    for i = 2,#deps do
-                        local path = splitpath(deps[i])
-                        if path ~= '' then
-                            append_unique(paths,path)
-                        end
-                    end
-                end
-                append(rules,lake.compile{deps[1],incdir=paths,nodeps=true})
-            end
-        end
-    end
-    f:close()
-    return depends(unpack(rules))
-end
 
 function get_target_list (t)
     if type(t) == 'table' then
@@ -1426,9 +1419,9 @@ local basic_variables = {INPUT=true,TARGET=true,DEPENDS=true,LIBS=true,CFLAGS=tr
 function exec(s,dont_fail,t)
     local cmd = subst(s)
     if basic_print and t then
-        print('built',t.target)
+        log('built',t.target)
     else
-        print(cmd)
+        log(cmd)
     end
     if not TESTING then
         local ok,res = utils.execute(cmd)
@@ -1504,9 +1497,9 @@ function fire(t)
                 local filter = t.rule.filter or nop
                 local outf = t.rule.stdout and io.stdout or io.stderr
                 if basic_print and ok then
-                    print('built',t.target)
+                    log('built',t.target)
                 else
-                    print(cmd)
+                    log(cmd)
                 end
                 filter({TARGET,INPUT,t.rule},'start')
                 for line in inf:lines() do
@@ -1538,7 +1531,7 @@ function check(time,t)
         return
     end
 
-    if verbose then print('target: '..t.target) end
+    if verbose then log('target: '..t.target) end
 
     if t.deps then
         -- the basic out-of-date check compares last-written file times.
@@ -1547,7 +1540,7 @@ function check(time,t)
             local tm = filetime(dfile)
             check (tm,target_from_file(dfile))
             tm = filetime(dfile)
-            if verbose then print(t.target,dfile,time,tm) end
+            if verbose then log(t.target,dfile,time,tm) end
             deps_changed = deps_changed or tm > time or tm == -1
         end
         -- something's changed, so do something!
@@ -1686,12 +1679,12 @@ function change_dir (path)
     if not path then return end
     if path == '!' or path == '<' then
         lfs.chdir(pop(dir_stack))
-        print('restoring directory')
+        log('restoring directory')
     else
         push(dir_stack,lfs.currentdir())
         local res,err = lfs.chdir(path)
         if not res then quit(err) end
-        print('changing directory',path)
+        log('changing directory',path)
     end
     update_pwd()
 end
@@ -1700,7 +1693,7 @@ lake.chdir = change_dir
 
 function lake.concurrent_jobs (nj)
     if not found_threads then return nil,"no threading available; winapi/posix needed" end
-    if type(nj) ~= nil then return nil,"number of jobs must be a integer" end
+    if type(nj) ~= 'number' then return nil,"number of jobs must be a integer" end
     n_threads = nj
     return true
 end
@@ -1864,14 +1857,14 @@ local function process_args()
                 if write_needs then
                     local needf = package..'.need.lua'
                     out = io.open(needf,'w')
-                    print('writing '..needf)
+                    log('writing '..needf)
                 end
                 out:write(('--- variables for package %s\n'):format(package))
                 for _,v in ipairs(vars) do out:write(v,'\n') end
                 out:write('----\n')
                 if write_needs then out:close() end
             end
-            print (write_needs and "please edit the needs files!"
+            log (write_needs and "please edit the needs files!"
                 or "use -w to write skeleton needs files")
             quit "unsatisfied needs"
         end
@@ -1887,7 +1880,7 @@ function finalize()
         if stat then
             file.copy(TMPSPEC,lakefile..'.spec')
         else
-            print('unable to recreate spec file: ',err)
+            log('unable to recreate spec file: ',err)
         end
     end
 end
@@ -1972,7 +1965,7 @@ function go()
     end
     jobs_clear()
     if nbuild == 0 then
-        if not synth_target then print 'lake: up to date' end
+        if not synth_target then log 'lake: up to date' end
     end
     -- @doc 'synth-target' a program target was implicitly created from the file on the command line;
     -- execute the target, passing the rest of the parms passed to Lake, unless we were
@@ -2508,7 +2501,6 @@ function lake.define_pkg_need (name,package)
     local alias = package ~= nil
     define_need(name,function()
         local knows_package
-         local null = " 2>&1 >"..choose(WINDOWS,'NUL','/dev/null')
         if not alias then package = name end
         if pkg_config_present == nil then
             pkg_config_present = utils.which 'pkg-config'
@@ -2517,7 +2509,7 @@ function lake.define_pkg_need (name,package)
             quit("package "..package.." requires pkg-config on the path")
         end
         if pkg_config_present then
-             if utils.execute('pkg-config '..package..null) then
+            if utils.execute('pkg-config '..package,true) then
                 knows_package = true
             elseif alias then
                 quit("package "..package.." not known by pkg-config; please install")
@@ -2531,7 +2523,6 @@ function lake.define_pkg_need (name,package)
     end)
 end
 
-local log = print
 
 -- @doc [needs] unknown needs searched in this order:
 -- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then pkg-config
@@ -2540,9 +2531,11 @@ local function handle_unknown_need (name)
     define_need(name,function()
         local ok,needs,nfun,needs_package
         local pack,sub = split2(name,'%-')
-        needs_package = 'lake.needs.'..(pack or name)
-        log("trying to load "..needs_package,sub)
+        pack = pack or name
+        needs_package = 'lake.needs.'..pack
+
         ok,nfun = pcall(require,needs_package)
+        log("trying to load "..needs_package,sub,ok)
         if ok then
             if type(nfun) == 'function' then return nfun(sub) end
         else
@@ -2586,6 +2579,9 @@ local function update_needs(ptype,args)
             handle_unknown_need(need)
         end
         if extra_needs[need] then
+            if need == 'lua' then
+                args.lua = true
+            end
             local res = extra_needs[need]()
             if res then
                 append_to_field(args,'libs',res.libs)
@@ -2641,6 +2637,7 @@ local function find_lua_dll (path)
     return exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
 end
 
+
 function update_lua_flags ()
     local res = {}
     if not LUA_LIBS then
@@ -2688,22 +2685,25 @@ function update_lua_flags ()
     local use_import_lib = LUA_LIB_DIR
     if WINDOWS then
         -- recommended practice for MinGW is to link directly against the DLL
+        local libs
         if CC=='gcc' and not using_LfW then
-            res.libs = LUA_DLL
+            libs = LUA_DLL
             use_import_lib = false
         else
-            res.libs = LUA_LIBS
+            libs = LUA_LIBS
         end
+        res.incdir = quote_if_necessary(res.incdir)
+        res.libs = {libs}
     end
     if using_LfW then -- specifically, Lua for Windows
         if CC=='gcc' then -- force link against VS2005 runtime
             append(res.libs,'msvcr80')
         else -- CL link may assume the runtime is installed
-            res.libflags = '/MD'
+            res.flags = '/MD'
         end
     end
     if use_import_lib then
-        res.libdir = LUA_LIB_DIR
+        res.libdir = quote_if_necessary(LUA_LIB_DIR)
     end
     return res
 end
@@ -2876,10 +2876,7 @@ local function _program(ptype,name,deps,lang)
         args.rules = args.rules or args.inputs
         if args.rules then
             cr = args.rules
-            -- @doc 'rules' may be a .deps file
-            if type(cr) == 'string' then
-                cr = rules_from_deps(cr)
-            elseif is_simple_list(cr) then
+            if is_simple_list(cr) then
                 cr = depends(cr)
             end
             if src then warning('providing src= with explicit rules= is useless') end
@@ -3095,8 +3092,6 @@ function default(...)
     new_target('default',args,'',true)
 end
 
---target = new_target -- global alias
-
 target = {}
 local tmt = utils.make_callable(target,new_target)
 tmt.__index = function(obj,name)
@@ -3117,6 +3112,7 @@ local function  action_(name,action,...)
     end
     return new_target(name,nil,function() action(unpack(args)) end)
 end
+
 local amt = utils.make_callable(action,action_)
 amt.__index = function(obj,name)
     return function(...)
