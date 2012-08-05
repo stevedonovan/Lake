@@ -957,6 +957,12 @@ end
 
 local function concat(s1,s2) return (s1 or '')..' '..s2 end
 
+local function concat_if_table(t,field)
+    local val = t[field]
+    if type(val) == 'table' then
+        t[field] = table.concat(val,' ')
+    end
+end
 
 --end_of_libs---------------------------------------------
 
@@ -2749,7 +2755,7 @@ local program_fields = {
     ext=true, -- extension of source, if not the usual. E.g. ext='.cxx'
     defines=true, -- C preprocessor defines
     incdir=true, -- list of include directories
-    flags=true,	 -- extra compile flags
+    flags=true,cflags=true,	 -- extra compile flags
     debug=true, -- override global default set by -g or DEBUG variable
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
@@ -2816,6 +2822,9 @@ local function _program(ptype,name,deps,lang)
         if args.shared or args.dll then ptype = 'dll' end
         src = args.src
         except = args.exclude
+        concat_if_table(args,'libflags')
+        args.flags = args.flags or args.cflags
+        concat_if_table(args,'flags')
         -- @doc 'needs' specifying libraries etc by 'needs', not explicitly
         if args.needs or NEEDS then
             -- @doc [needs] extra needs for all compile targets can be set with the NEEDS global.
