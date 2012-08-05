@@ -3,7 +3,7 @@ if not NO_FILTER then
 	if CC ~= 'cl' then
         local filter = false
         lake.output_filter(cpp,function(line)
-            local msg = line:match('[^:]+:%d+:%d+:%s([^:]+)')
+            local msg = line:match('^%S+%s+([^:]+)')
             if msg == 'note' then
                 filter = true
             elseif filter and msg then

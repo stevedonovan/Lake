@@ -618,7 +618,7 @@ end
 
 local function canonical_path (p)
     if WINDOWS then
-        return (p:gsub('/','\\'):lower()
+        return (p:gsub('/','\\'):lower())
     else
         return p
     end
