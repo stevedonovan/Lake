@@ -616,6 +616,22 @@ function path.mkdir (p)
     return _mkdir(p)
 end
 
+local function canonical_path (p)
+    if WINDOWS then
+        return (p:gsub('/','\\'):lower()
+    else
+        return p
+    end
+end
+
+local function canonical_paths (deps)
+    if WINDOWS then for i = 1,#deps do
+        deps[i] = canonical_path(deps[i])
+    end end
+    return deps
+end
+
+
 -- this expands any $(VAR) occurances in @s (where VAR is a global varialable).
 -- If VAR is not present, then the expansion is just the empty string, unless
 -- it is on the @exclude list, where it remains unchanged, ready for further
@@ -1020,7 +1036,7 @@ local extensions = {
     ['.f'] = f, ['.for'] = f, ['.f90'] = f,
 }
 
-local deps_args, isrule, istarget
+local deps_arg, isrule, istarget
 
 function lake.register(lang,extra)
     extensions[lang.ext] = lang
@@ -1054,17 +1070,19 @@ end
 -- This function is guaranteed to return a plain list, and will wrap other objects like
 -- targets and rules appropriately. Strings, targets, rules and target lists are
 -- allowed.
-function deps_arg(deps,base,expand_rule)
+--
+-- Third argument determines whether the result must be reduced to strings.
+function deps_arg(deps,base,returns_strings)
     local T = type(deps)
     if T=='table' and not is_simple_list(deps) then
-        if expand_rule and isrule(deps) then return deps:get_targets()
+        if returns_strings and isrule(deps) then return deps:get_targets()
         else
             local tl = get_target_list(deps)
             if not tl and istarget(deps) then
                 tl = {deps}
             end
             if tl then
-                return column_list(tl,'target')
+                return returns_strings and column_list(tl,'target') or tl
             else
                 return {deps}
             end
@@ -1075,7 +1093,7 @@ function deps_arg(deps,base,expand_rule)
     elseif T=='table' then
         local res = {}
         for i = 1,#deps do
-            append_list(res,deps_arg(deps[i],base,expand_rule))
+            append_list(res,deps_arg(deps[i],base,returns_strings))
         end
         deps = res
     end
@@ -1104,6 +1122,7 @@ function expand_args(src,ext,recurse,base)
             end
         end
     end
+    canonical_paths(res)
     return res
 end
 
@@ -1135,13 +1154,14 @@ local function remove_quotes (ls)
     return ls
 end
 
+
 local function new_target(tname,deps,cmd,upfront)
     local t = setmetatable({},tmt)
     if tname == '*' then
         tname = '*'..tcnt
         tcnt = tcnt + 1
     end
-    t.target = tname
+    t.target = canonical_path(tname)
     t.deps = remove_quotes(deps_arg(deps))
     t.cmd = cmd
     if upfront then
@@ -1212,9 +1232,6 @@ function rt.deps_filename (r,name)
     return replace_extension(t.target,'.d'), t.input
 end
 
-local function canonical_win (p)
-    return p:gsub('/','\\'):lower()
-end
 
 -- add a new target to a rule object, with name @tname and optional dependencies @deps.
 -- @tname may have an extension which overrides the default. If the in-extension is '*',
@@ -1364,9 +1381,7 @@ function deps_from_d_file(fname)
     local line,err = file.read(fname)
     if not line or #line == 0 then return false,err end
     local _,deps = parse_deps_line(line:gsub(' \\',' '))
-    if WINDOWS then for i = 1,#deps do
-        deps[i] = canonical_win(deps[i])
-    end end
+    canonical_paths(deps)
     return deps
 end
 
@@ -2682,18 +2697,17 @@ function update_lua_flags ()
         end
     end
     res.incdir = LUA_INCLUDE_DIR
-    local use_import_lib = LUA_LIB_DIR
     if WINDOWS then
         -- recommended practice for MinGW is to link directly against the DLL
         local libs
         if CC=='gcc' and not using_LfW then
-            libs = LUA_DLL
+            res.libflags = LUA_DLL
             use_import_lib = false
         else
-            libs = LUA_LIBS
+            res.libs = {LUA_LIBS}
+            res.libdir = quote_if_necessary(LUA_LIB_DIR)
         end
         res.incdir = quote_if_necessary(res.incdir)
-        res.libs = {libs}
     end
     if using_LfW then -- specifically, Lua for Windows
         if CC=='gcc' then -- force link against VS2005 runtime
@@ -2701,9 +2715,6 @@ function update_lua_flags ()
         else -- CL link may assume the runtime is installed
             res.flags = '/MD'
         end
-    end
-    if use_import_lib then
-        res.libdir = quote_if_necessary(LUA_LIB_DIR)
     end
     return res
 end
