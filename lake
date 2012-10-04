@@ -2751,7 +2751,7 @@ local program_fields = {
     libdir=true, -- list of lib directories
     libflags=true, -- list of flags for linking
     libs=true, -- list of libraries
-    odir=true, -- output directory; if true then use 'debug' or 'release'; prepends PREFIX
+    odir=true, -- output directory; if true then use 'debug' or 'release'; if non-nil use it as output directory directly; prepends PREFIX
     optimize=true, -- override global default set by OPTIMIZE variable
     precompiled_header=true, -- provide a header to be precompiled and used
     recurse=true, -- recursively find source files specified in src=wildcard
@@ -2761,7 +2761,7 @@ local program_fields = {
     static=true, -- statically link this target
     strict=true, -- strict compilation of files
     strip=true,  -- strip symbols from output
-    subsystem=true, -- (Windows) GUi application
+    subsystem=true, -- (Windows) GUI application
     ---- OS X support
     framework=true, -- link against framework (-framework flag)
     framework_dir=true, -- provide framework path (-F flag)
