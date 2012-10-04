@@ -2731,42 +2731,42 @@ define_need('lua',update_lua_flags)
 
 
 local program_fields = {
-    name=true, -- name of target (or first value of table)
-    lua=true,  -- build against Lua libs
     args=true,  -- any default arguments (works like lang.defaults, doesn't override)
+    base=true, -- base directory for source and includes
+    cflags=true,flags=true,	 -- extra compile flags
+    compile_deps=true, -- explicit dependencies of source files
+    debug=true, -- override global default set by -g or DEBUG variable
+    defines=true, -- C preprocessor defines
+    deps=true, -- explicit dependencies of a target (or subsequent values in table)
+    dynamic=true, -- link dynamically against runtime (default true for GCC, override for MSVC)
+    exclude=true,	-- a similar list that should be excluded from the source list (e.g. if src='*')
+    export=true, -- this executable exports its symbols
+    ext=true, -- extension of source, if not the usual. E.g. ext='.cxx'
+    headers=true, -- explicit list of header files (not usually needed with auto deps)
+    incdir=true, -- list of include directories
+    lua=true,  -- build against Lua libs
+    llua=true, -- name of Lua module being built
+    name=true, -- name of target (or first value of table)
     needs=true, -- higher-level specification of target link requirements
     libdir=true, -- list of lib directories
-    libs=true, -- list of libraries
     libflags=true, -- list of flags for linking
-    subsystem=true, -- (Windows) GUi application
-    strip=true,  -- strip symbols from output
+    libs=true, -- list of libraries
+    odir=true, -- output directory; if true then use 'debug' or 'release'; prepends PREFIX
+    optimize=true, -- override global default set by OPTIMIZE variable
+    precompiled_header=true, -- provide a header to be precompiled and used
+    recurse=true, -- recursively find source files specified in src=wildcard
     rules=true,inputs=true, -- explicit set of compile targets
     shared=true,dll=true, -- a DLL or .so (with lang.library)
-    deps=true, -- explicit dependencies of a target (or subsequent values in table)
-    compile_deps=true, -- explicit dependencies of source files
-    export=true, -- this executable exports its symbols
-    dynamic=true, -- link dynamically against runtime (default true for GCC, override for MSVC)
-    static=true, -- statically link this target
-    headers=true, -- explicit list of header files (not usually needed with auto deps)
-    odir=true, -- output directory; if true then use 'debug' or 'release'; prepends PREFIX
     src=true, -- src files, may contain directories or wildcards (extension deduced from lang or `ext`)
-    exclude=true,	-- a similar list that should be excluded from the source list (e.g. if src='*')
-    recurse=true, -- recursively find source files specified in src=wildcard
-    ext=true, -- extension of source, if not the usual. E.g. ext='.cxx'
-    defines=true, -- C preprocessor defines
-    incdir=true, -- list of include directories
-    flags=true,cflags=true,	 -- extra compile flags
-    debug=true, -- override global default set by -g or DEBUG variable
-    optimize=true, -- override global default set by OPTIMIZE variable
+    static=true, -- statically link this target
     strict=true, -- strict compilation of files
-    base=true, -- base directory for source and includes
-    precompiled_header=true, -- provide a header to be precompiled and used
-    llua=true, -- name of Lua module being built
+    strip=true,  -- strip symbols from output
+    subsystem=true, -- (Windows) GUi application
     ---- OS X support
     framework=true, -- link against framework (-framework flag)
     framework_dir=true, -- provide framework path (-F flag)
-    universal=true,  -- universal 32bit/64bit Intel binary
     min_version=true, -- minimum OS X version (default 10.5)
+    universal=true,  -- universal 32bit/64bit Intel binary
 }
 
 function lake.add_program_option(options)
