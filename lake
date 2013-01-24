@@ -2200,7 +2200,8 @@ function lake.set_flags(parms)
         cpp_ch.appends_extension = true
 
         -- @doc under Windows, we use the .def file if provided when linking a DLL
-        function c.massage_link (name,deps)
+        function c.massage_link (name,deps,t)
+            if t.ptype ~= 'dll' then return deps end
             local def = exists(name..'.def')
             if def and WINDOWS then
                 deps = copy_list(deps)
@@ -2260,27 +2261,29 @@ function lake.set_flags(parms)
                 if extension_of(l) == '.dll' then l = replace_extension(l,'.lib') end
                 append(deps,l)
             end
-            -- if there was an explicit .def file, use it; it will be relative to any base
-            local bname = t.basedir and path.join(t.basedir,name) or name
-            local def = exists(bname..'.def')
-            if def then
-                append(deps,'/DEF:'..def)
-            elseif (t.lua or t.llua ~= nil) and t.ptype == 'dll' then
-                -- somewhat ugly hack: if no .def and this is a Lua extension, then make sure
-                -- the Lua extension entry point is visible. llua=false will suppress this,
-                -- if it's a DLL linked against Lua that is not itself an extension, or already
-                -- exports its symbols
-                local _,mname
-                if t.llua == nil then
-                    _,mname = splitpath(name)
-                elseif type(t.llua) == 'string' then
-                    mname = t.llua
-                else
-                    mname = nil
-                end
-                if mname then
-                    mname = mname:gsub('%.','_')
-                    append(deps,' /EXPORT:luaopen_'..mname)
+            if t.ptype == 'dll' then
+                -- if there was an explicit .def file, use it; it will be relative to any base
+                local bname = t.basedir and path.join(t.basedir,name) or name
+                local def = exists(bname..'.def')
+                if def then
+                    append(deps,'/DEF:'..def)
+                elseif t.lua or t.llua ~= nil then
+                    -- somewhat ugly hack: if no .def and this is a Lua extension, then make sure
+                    -- the Lua extension entry point is visible. llua=false will suppress this,
+                    -- if it's a DLL linked against Lua that is not itself an extension, or already
+                    -- exports its symbols
+                    local _,mname
+                    if t.llua == nil then
+                        _,mname = splitpath(name)
+                    elseif type(t.llua) == 'string' then
+                        mname = t.llua
+                    else
+                        mname = nil
+                    end
+                    if mname then
+                        mname = mname:gsub('%.','_')
+                        append(deps,' /EXPORT:luaopen_'..mname)
+                    end
                 end
             end
             -- a proper debug link should generate a PDB in the same directory as the executable
@@ -2447,6 +2450,16 @@ local function define_need (name,callback)
 end
 lake.define_need = define_need
 
+local function get_extra_needs (name,args)
+    local res = extra_needs[name]()
+    for k,v in pairs(res) do
+        if type(v) == 'function' then
+            res[k] = v(args)
+        end
+    end
+    return res
+end
+
 local function examine_config_vars(package,subtype)
     -- @doc [needs] If we're trying to match a need 'frodo', then we
     -- generate FRODO_INCLUDE_DIR, FRODO_LIB_DIR, FRODO_LIBS, FRODO_DIR
@@ -2548,7 +2561,7 @@ end
 -- @doc [needs] unknown needs searched in this order:
 -- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then pkg-config
 
-local function handle_unknown_need (name)
+local function handle_unknown_need (name,args)
     define_need(name,function()
         local ok,needs,nfun,needs_package
         local pack,sub = split2(name,'%-')
@@ -2566,7 +2579,7 @@ local function handle_unknown_need (name)
         needs = examine_config_vars(pack,sub)
         if not needs then
             lake.define_pkg_need(name)
-            needs = extra_needs[name]()
+            needs = get_extra_needs(name,args)
             if needs then
                 unsatisfied_needs[name] = nil
             end
@@ -2597,13 +2610,13 @@ local function update_needs(ptype,args)
     local libs = {}
     for need in list_(args.needs) do
         if not extra_needs[need] and not builtin_needs[need] then
-            handle_unknown_need(need)
+            handle_unknown_need(need,args)
         end
         if extra_needs[need] then
             if need == 'lua' then
                 args.lua = true
             end
-            local res = extra_needs[need]()
+            local res = get_extra_needs(need,args)
             if res then
                 append_to_field(args,'libs',res.libs)
                 append_to_field(args,'incdir',res.incdir) -- ?? might be multiple!
@@ -2829,6 +2842,7 @@ local function _program(ptype,name,deps,lang)
         if args.needs or NEEDS then
             -- @doc [needs] extra needs for all compile targets can be set with the NEEDS global.
             append_to_field(args,'needs',NEEDS)
+            -- @doc [needs] a language may take over needs processing by defining process_needs()
             if lang.process_needs then
                 lang.process_needs(ptype,args)
             else

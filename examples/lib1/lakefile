@@ -1,3 +1,9 @@
-lib = c.shared {'lib1'}
-c.program{'needs-lib1',lib}
+dll = c.shared {'lib1'}
+lib = c.library {'lib1'}
+default {
+    c.program{'with_dll',src='needs-lib1',dll};
+    c.program{'with_lib',src='needs-lib1',lib}
+}
+
+
 
