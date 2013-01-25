@@ -1742,7 +1742,7 @@ local function process_args()
     STRICT = true
     -- @doc [config] try load ~/.lake/config.lua, then ./lakeconfig.lua.
     -- We also put ~./lake on the package path for Lake-specific
-    -- plugins.  If the global CONFIG_FILE is set, then we'll also try load that.
+    -- plugins.  If the global LAKE_CONFIG_FILE is set, then we'll also try load that.
     local home = expanduser '~/.lake'
     lake.home = home
     package.path = home..'/?.lua;'..package.path
@@ -1855,8 +1855,8 @@ local function process_args()
         end
         i = i + 1
      end
-    if CONFIG_FILE then
-        safe_dofile (CONFIG_FILE)
+    if LAKE_CONFIG_FILE then
+        safe_dofile (LAKE_CONFIG_FILE)
     end
     lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
@@ -2225,11 +2225,12 @@ function lake.set_flags(parms)
         c.flags_handler = function(lang,args,compile)
             local flags = ''
             if compile then
+                local debug = args.debug or DEBUG
                 if args.dynamic or args.static == false then
-                    flags = flags .. ' /MD'
+                    flags = flags .. choose(debug,' /MDd',' /MD')
                 end
                 flags = flags .. ' /D_CRT_SECURE_NO_DEPRECATE'
-                if args.debug or DEBUG then
+                if debug then
                     flags = flags .. ' /DDEBUG'
                 else
                     flags = flags .. ' /DNDEBUG'
@@ -2452,6 +2453,7 @@ lake.define_need = define_need
 
 local function get_extra_needs (name,args)
     local res = extra_needs[name]()
+    if not res then return nil end
     for k,v in pairs(res) do
         if type(v) == 'function' then
             res[k] = v(args)
@@ -2569,7 +2571,7 @@ local function handle_unknown_need (name,args)
         needs_package = 'lake.needs.'..pack
 
         ok,nfun = pcall(require,needs_package)
-        log("trying to load "..needs_package,sub,ok)
+        --log("trying to load "..needs_package,sub,ok)
         if ok then
             if type(nfun) == 'function' then return nfun(sub) end
         else
@@ -2751,7 +2753,7 @@ local program_fields = {
     libdir=true, -- list of lib directories
     libs=true, -- list of libraries
     libflags=true, -- list of flags for linking
-    subsystem=true, -- (Windows) GUi application
+    subsystem=true, -- (Windows) GUI application
     strip=true,  -- strip symbols from output
     rules=true,inputs=true, -- explicit set of compile targets
     shared=true,dll=true, -- a DLL or .so (with lang.library)
@@ -2761,7 +2763,7 @@ local program_fields = {
     dynamic=true, -- link dynamically against runtime (default true for GCC, override for MSVC)
     static=true, -- statically link this target
     headers=true, -- explicit list of header files (not usually needed with auto deps)
-    odir=true, -- output directory; if true then use 'debug' or 'release'; prepends PREFIX
+    odir=true,output_directory=true, -- output directory; if true then use 'debug' or 'release'; if non-nil use it as output directory directly; prepends PREFIX
     src=true, -- src files, may contain directories or wildcards (extension deduced from lang or `ext`)
     exclude=true,	-- a similar list that should be excluded from the source list (e.g. if src='*')
     recurse=true, -- recursively find source files specified in src=wildcard
@@ -2924,6 +2926,7 @@ local function _program(ptype,name,deps,lang)
     else
         args = {} -- _probably_ an error??
     end
+    args.odir = args.odir or args.output_directory
     if args.base then
         if args.odir then
             if not isabs(args.odir) then
@@ -3163,5 +3166,26 @@ ENV = setmetatable({},{
         M.setenv(key,value)
     end
 })
+
+IF = choose
+
+function lake.compiler_version (cc)
+    local text,major, minor, rev
+    cc = cc or CC
+    if cc=='cl' then
+        text = utils.shell 'cl'
+        major, minor  = text:match("[Cc]ompiler [Vv]ersion%s+(%d+)%.(%d+)")
+        if not major then return end
+    else
+        text = utils.shell (cc..' -v')
+        major,minor,rev = text:match("gcc version (%d+)%.(%d+)%.(%d+)")
+        if not major then return end
+    end
+    return {
+        MAJOR = tonumber(major),
+        MINOR = tonumber(minor),
+        REV   = tonumber(rev),
+    }
+end
 
 process_args()
