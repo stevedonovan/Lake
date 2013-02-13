@@ -1,0 +1,35 @@
+dofile 'java.lang.lua'
+
+lua = '/Users/steve/lua/lua-5.1.4/src'
+
+lake.define_need('lua-static',function() return {
+    incdir = lua,
+    libdir = lua,
+    libs = 'lua'
+} end)
+
+
+project = 'luajava-1.1'
+package = 'org.keplerproject.luajava'
+
+t = java.program{'./'..project,
+    cdir='src/java',
+    package=package,
+    entry='Console'
+}
+
+jh = java.javah('src/c/luajava.h', t.target, package..'.LuaState')
+
+lj = c.shared{project,
+    src='src/c/luajava',
+    needs='java lua-static',
+    compile_deps = jh
+}
+
+target.javah {action (utils.remove,jh.target), lj}
+
+action.test(java.runner,t.target,'test/testMap.lua')
+
+default {lj}
+
+

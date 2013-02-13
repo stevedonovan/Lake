@@ -1,19 +1,22 @@
 -- see http://martinfowler.com/articles/rake.html#DependencyBasedProgramming
 task = target
 
-task('codeGen',nil,function()
+task.codeGen(nil,function()
   print 'codeGen'
 end)
 
-task('compile','codeGen',function()
-  print 'compile'	
+task.compile('codeGen',function()
+  print 'compile'
 end)
 
-task('dataLoad','codeGen',function()
+task.dataLoad('codeGen',function()
   print 'dataLoad'
 end)
 
-task('test','compile dataLoad',function()
+task.test('compile dataLoad',function()
   print 'test'
 end)
+
+default 'test'
+
 

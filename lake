@@ -234,6 +234,7 @@ function exists(path,fname)
     end
 end
 path.exists = exists
+file.exists = exists
 
 -- is @path a directory?
 local function isdir(path)
@@ -618,7 +619,7 @@ end
 
 local function canonical_path (p)
     if WINDOWS then
-        return (p:gsub('/','\\'):lower())
+        return (p:gsub('/','\\')) --:lower())
     else
         return p
     end
@@ -1273,12 +1274,12 @@ function rt.add_target(r,tname,deps,root)
     end
     local base = basename(tname)
     -- by default, target is created in cwd, but it can be put into a subdirectory
-    if r.output_dir then
-        target_name = join(r.output_dir,target_name)
-    elseif lang and lang.output_in_same_dir then
+    if lang and lang.output_in_same_dir then
         -- this is used by compilers like javac which generate output files
         -- within the same directory as the source files
         target_name = replace_extension(input,r.out_ext)
+    elseif  r.output_dir then
+        target_name = join(r.output_dir,target_name)
     end
 
     -- the files which this target is dependent on.
@@ -1463,6 +1464,19 @@ end
 
 local current_rule,first_target,combined_targets = nil,nil,{}
 
+local function relative_to (rpath,bpath)
+    rpath = rpath:gsub('\\','/')
+    local i1,i2 = rpath:find(bpath)
+    if i1 == 1 then
+        rpath = rpath:sub(i2+2)
+    else
+        rpath = '../../'..rpath
+    end
+    --print(rpath,i1,i2)
+    return rpath
+end
+
+
 function fire(t)
     if not t.fake then
         -- @doc compilers often support the compiling of multiple files at once, which
@@ -1475,7 +1489,9 @@ function fire(t)
                 first_target = t
             end
             if current_rule == t.rule then
-                append(combined_targets,t.input)
+                local input = t.input
+                if t.cdir then input = relative_to(input,t.cdir) end
+                append(combined_targets,input)
                 -- this is key: although we defer compilation, we have to immediately
                 -- flag the target as modified
                 lfs.touch(t.target)
@@ -1500,11 +1516,19 @@ function fire(t)
     -- subst_all_but_basic() to replace every _other_ variable in command strings.
     INPUT = t.input
     TARGET = t.target
+    if t.cdir then TARGET=relative_to(TARGET,t.cdir) end
     SRC = t.src and table.concat(t.src,' ')
     if t.deps then
         local deps = t.deps
         if t.link_lang and t.link_lang.massage_link then
             deps = t.link_lang.massage_link(t.name,deps,t)
+        end
+        if t.cdir then
+            local odeps = deps
+            deps = {}
+            for i = 1,#odeps do
+                deps[i] = relative_to(odeps[i],t.cdir)
+            end
         end
         DEPENDS = table.concat(deps,' ')
     end
@@ -1537,6 +1561,7 @@ function fire(t)
     elseif ttype == 'function' then -- a Lua function
         jobs_clear()
         t.cmd(t)
+        nbuild = nbuild - 1
     else -- nothing happened, but we are satisfied (empty command target)
         nbuild = nbuild - 1
     end
@@ -1863,7 +1888,7 @@ local function process_args()
     if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]lake%.exe' then
         if use_lakefile then
             local orig_lakefile = lakefile
-            lakefile = exists(lakefile or 'lakefile')
+            lakefile = exists(lakefile or 'lakefile') or exists 'lakefile.lua'
             if not lakefile then
                 quit("'%s' does not exist",orig_lakefile or 'lakefile')
             end
@@ -2413,7 +2438,7 @@ local function _compile(name,compile_deps,lang)
     if not args.nodeps and not NODEPS and lang.auto_deps then
         cflags = cflags .. ' ' .. lang.auto_deps
     end
-    local can_combine = not args.odir and COMBINE and lang.compile_combine
+    local can_combine = lang.please_combine or (not args.odir and COMBINE and lang.compile_combine)
     local compile_cmd = lang.compile
     if can_combine then compile_cmd = lang.compile_combine end
     local compile_str = subst_all_but_basic(compile_cmd)
@@ -2767,6 +2792,7 @@ local program_fields = {
     defines=true, -- C preprocessor defines
     incdir=true, -- list of include directories
     flags=true,cflags=true,	 -- extra compile flags
+    cdir=true,compile_directory=true, -- run tool in this directory
     debug=true, -- override global default set by -g or DEBUG variable
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
@@ -2803,6 +2829,7 @@ local function tail (t,istart)
     return {select(istart,unpack(t))}
 end
 
+
 local function _program(ptype,name,deps,lang)
     local dependencies,src,except,cr,args
     local libs = LIBS
@@ -2815,9 +2842,19 @@ local function _program(ptype,name,deps,lang)
         append_table(args,args.args,true)
         --- the name can be the first element of the args table;
         --- the rest of the array will be considered as dependencies.
-        name = args.name or args[1]
-        deps = args.deps or tail(args)
+        args.name = args.name or args[1]
+        args.deps = args.deps or tail(args)
         args.debug = args.debug or DEBUG
+        args.cdir = args.cdir or args.compile_dir
+
+        if lang.args_handler then -- language can modify args
+            lang:args_handler(args)
+        end
+
+        name, deps = args.name, args.deps
+        if args.cdir then
+            args.base = args.cdir
+        end
         --- if the name contains wildcards, then we make up a new unique target
         --- that depends on all the files. So for instance 'c.program '*' will compile
         --- all C files in a directory as programs.
@@ -3021,6 +3058,7 @@ local function _program(ptype,name,deps,lang)
             path.mkdir(tpath)
         end
 
+
         t = new_target(target,dependencies,link_str,true)
         t.name = name
         t.libs = ptype ~= 'lib' and libs or args.libs
@@ -3032,6 +3070,10 @@ local function _program(ptype,name,deps,lang)
         t.debug = args.debug
         t.ptype = ptype
         t.basedir = args.base
+        if args.cdir then
+            t.dir = args.cdir
+            t.cdir = args.cdir
+        end
         if cr then cr.parent = t end
         t.compile_rule = cr
     end
