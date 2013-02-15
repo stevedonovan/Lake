@@ -1673,15 +1673,63 @@ function expand_dependencies(t)
     end
 end
 
+local getter
+
+function lake.download (url,pathname)
+    if not getter then
+        if utils.which 'curl' then
+            getter = 'curl -s -f -o '
+        elseif utils.which 'wget' then
+            getter = 'wget -O '
+        else
+            quit 'cannot find either wget or curl on your system'
+        end
+    end
+    pathname = pathname or path.basename(url)
+    utils.execute(getter..pathname..' '..url,true)
+    return path.exists(pathname)
+end
+
+local canonical_lake_files = 'http://stevedonovan.github.com/files/'
+canonical_lake_files = 'http://localhost:8080/lake/'
+
+local function remote_file (file)
+    local res
+    if file:match '^get:' then
+        file = file:gsub('^get:','',1)
+        file = canonical_lake_files..file
+    end
+    if file:match '^http:' then
+        print ('downloading... '..file)
+        res = lake.download (file)
+    end
+    return res
+end
+
+local function exists_maybe_remotely (fileref)
+    if exists(fileref.file) then
+        return true
+    else
+        fileref.file = remote_file (fileref.file)
+        return fileref.file
+    end
+end
+
 local function exists_lua(name) return exists(name..'.lua') end
 
 --- either a file defining a need, like 'foo.need.lua' or one defining
 -- a language like 'boo.lang.lua'. The .lua extension is not necessary.
 function lake.install_plugin (parm)
     local home = lake.home..'/lake/'
-    local fname = exists(parm) or exists_lua(parm)
+    if path.extension_of(parm) == '' then
+        parm = parm..'.lua'
+    end
+    local fname = exists(parm)
     if not fname then
-        quit(parm..'.lua not found!')
+        parm = remote_file (parm)
+        if not parm then
+            quit(file..' not found!')
+        end
     end
     local package,kind = fname:match '([^.]+)%.(.+)%.'
     if not package or not (kind == 'need' or kind == 'lang') then
@@ -1842,7 +1890,10 @@ local function process_args()
                 lakefile,err = file.temp_copy(("tp,name = lake.deduce_tool('%s'); tp.shared{name,lua=%s}"):format(name,lua))
             end
         else
-            if not no_synth_target and a:find('%.') and exists(a) then
+            local A = {file=a}
+            if not no_synth_target and a:find('%.') and exists_maybe_remotely(A) then
+                if not A.file then quit("remote download failed") end
+                a = A.file
                 -- @doc 'synth-target' unless specifically switched off with '-t',
                 -- Lua scripts are run in the context of Lake
                 if extension_of(a) == '.lua' then
@@ -3190,7 +3241,8 @@ amt.__index = function(obj,name)
     end
 end
 
-ENV = setmetatable({},{
+ENV = {SEP=WINDOWS and ';' or ':'}
+setmetatable(ENV,{
     __index = function(self,key)
         return env(key)
     end;
