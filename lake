@@ -1711,11 +1711,12 @@ local function exists_lua(name) return exists(name..'.lua') end
 function lake.install_plugin (parm)
     if path.extension_of(parm) == '' then parm = parm..'.lua'  end
     local fname = exists(parm)
-    if not fname and not lake.is_remote(parm) then
-        quit(parm..' not found!')
-    else
-        fname = lake.download(parm)
-        if not fname then quit(parm..' unable to download') end
+    if not fname then
+        if not lake.is_remote(parm) then  quit(parm..' not found!')
+        else
+            fname = lake.download(parm)
+            if not fname then quit(parm..' unable to download') end
+        end
     end
     local name = path.basename(fname)
     local package,kind = name:match '([^.]+)%.(.+)%.'
@@ -1729,7 +1730,9 @@ function lake.install_plugin (parm)
     else
         sub = '/lake/'
     end
-    file.copy(fname, lake.home..sub..package..'.lua')
+    local dest = lake.home..sub..package..'.lua'
+    print('copying '..fname..' to '..dest)
+    file.copy(fname, dest)
     if kind == 'lang' then
         -- lang packages are special since they are available
         -- without explicit require in lakefiles.

@@ -67,11 +67,11 @@ function java.javah (name,classpath,entry)
 end
 
 lake.define_need('java',function()
-    JPLAT = WINDOws and 'win32' or 'linux'
+    JPLAT = WINDOWS and 'win32' or 'linux'
     return {
         incdir = '$(JDK)/include, $(JDK)/include/$(JPLAT)'
     }
-end)c
+end)
 
 java.runner = function(prog,args)
     local flags = ''
