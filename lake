@@ -1675,75 +1675,68 @@ end
 
 local getter
 
+local canonical_lake_files = 'http://stevedonovan.github.com/files/'
+canonical_lake_files = 'http://localhost:8080/lake/'
+
 function lake.download (url,pathname)
     if not getter then
         if utils.which 'curl' then
             getter = 'curl -s -f -o '
         elseif utils.which 'wget' then
-            getter = 'wget -O '
+            getter = 'wget -q _N -O '
         else
             quit 'cannot find either wget or curl on your system'
         end
     end
-    pathname = pathname or path.basename(url)
-    utils.execute(getter..pathname..' '..url,true)
-    return path.exists(pathname)
-end
-
-local canonical_lake_files = 'http://stevedonovan.github.com/files/'
-canonical_lake_files = 'http://localhost:8080/lake/'
-
-local function remote_file (file)
     local res
-    if file:match '^get:' then
-        file = file:gsub('^get:','',1)
-        file = canonical_lake_files..file
+    if url:match '^get:' then
+        url = url:gsub('^get:','',1)
+        url = canonical_lake_files..url
     end
-    if file:match '^http:' then
-        print ('downloading... '..file)
-        res = lake.download (file)
-    end
-    return res
+    print ('downloading... '..url)
+    pathname = pathname or path.basename(url)
+    local stat = utils.execute(getter..pathname..' '..url,true)
+    return stat and path.exists(pathname)
 end
 
-local function exists_maybe_remotely (fileref)
-    if exists(fileref.file) then
-        return true
-    else
-        fileref.file = remote_file (fileref.file)
-        return fileref.file
-    end
+function lake.is_remote (file)
+    return file:match '^get:' or file:match '^http:'
 end
 
 local function exists_lua(name) return exists(name..'.lua') end
 
 --- either a file defining a need, like 'foo.need.lua' or one defining
--- a language like 'boo.lang.lua'. The .lua extension is not necessary.
+-- a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
+-- The .lua extension is not necessary and the file may be remote.
 function lake.install_plugin (parm)
-    local home = lake.home..'/lake/'
-    if path.extension_of(parm) == '' then
-        parm = parm..'.lua'
-    end
+    if path.extension_of(parm) == '' then parm = parm..'.lua'  end
     local fname = exists(parm)
-    if not fname then
-        parm = remote_file (parm)
-        if not parm then
-            quit(file..' not found!')
-        end
-    end
-    local package,kind = fname:match '([^.]+)%.(.+)%.'
-    if not package or not (kind == 'need' or kind == 'lang') then
-        quit('no NAME.need or NAME.lang file found ')
-    end
-    if kind == 'need' then
-        file.copy(fname, home..'needs/'..package..'.lua')
+    if not fname and not lake.is_remote(parm) then
+        quit(parm..' not found!')
     else
-        local lang = package
-        file.copy(fname, home..'lang/'..lang..'.lua')
-        -- patch the config file
+        fname = lake.download(parm)
+        if not fname then quit(parm..' unable to download') end
+    end
+    local name = path.basename(fname)
+    local package,kind = name:match '([^.]+)%.(.+)%.'
+    if not package or not (kind == 'need' or kind == 'lang' or kind == 'lake') then
+        quit('no NAME.need,.lang or .lake file found ')
+    end
+    if kind=='need' then
+        sub = '/lake/needs/'
+    elseif kind=='lang' then
+        sub = '/lake/lang/'
+    else
+        sub = '/lake/'
+    end
+    file.copy(fname, lake.home..sub..package..'.lua')
+    if kind == 'lang' then
+        -- lang packages are special since they are available
+        -- without explicit require in lakefiles.
+        -- So have to patch the config file to insert the needed require.
         local config = join(lake.home,'config.lua')
         local contents = {}
-        local req = "require 'lake.lang."..lang.."'"
+        local req = "require 'lake.lang."..package.."'"
         local found
         if exists(config) then
             for line in io.lines(config) do
@@ -1890,10 +1883,8 @@ local function process_args()
                 lakefile,err = file.temp_copy(("tp,name = lake.deduce_tool('%s'); tp.shared{name,lua=%s}"):format(name,lua))
             end
         else
-            local A = {file=a}
-            if not no_synth_target and a:find('%.') and exists_maybe_remotely(A) then
-                if not A.file then quit("remote download failed") end
-                a = A.file
+            if lake.is_remote(a) then a = lake.download(a) or '?' end
+            if not no_synth_target and a:find('%.') and exists(a) then
                 -- @doc 'synth-target' unless specifically switched off with '-t',
                 -- Lua scripts are run in the context of Lake
                 if extension_of(a) == '.lua' then

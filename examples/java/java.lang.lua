@@ -1,7 +1,7 @@
 local jbin = ENV.JDK or quit 'please set JDK envrionment variable'
 JDK = ENV.JDK
 jbin = path.join(jbin,'bin')
-ENV.PATH = ENV.PATH .. ';' .. jbin
+ENV.PATH = ENV.PATH .. ENV.SEP .. jbin
 
 java = {ext='.java', obj_ext = '.class'}
 java.output_in_same_dir = true
@@ -67,8 +67,9 @@ function java.javah (name,classpath,entry)
 end
 
 lake.define_need('java',function()
+    JPLAT = WINDOws and 'win32' or 'linux'
     return {
-        incdir = '$(JDK)/include, $(JDK)/include/win32'
+        incdir = '$(JDK)/include, $(JDK)/include/$(JPLAT)'
     }
 end)c
 
