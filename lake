@@ -2517,14 +2517,9 @@ local function define_need (name,callback)
 end
 lake.define_need = define_need
 
-local function get_extra_needs (name,args)
-    local res = extra_needs[name]()
+local function get_extra_needs (name,args,static)
+    local res = extra_needs[name](args,static)
     if not res then return nil end
-    for k,v in pairs(res) do
-        if type(v) == 'function' then
-            res[k] = v(args)
-        end
-    end
     return res
 end
 
@@ -2629,7 +2624,7 @@ end
 -- @doc [needs] unknown needs searched in this order:
 -- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then pkg-config
 
-local function handle_unknown_need (name,args)
+local function handle_unknown_need (name,args,static)
     define_need(name,function()
         local ok,needs,nfun,needs_package
         local pack,sub = split2(name,'%-')
@@ -2647,7 +2642,7 @@ local function handle_unknown_need (name,args)
         needs = examine_config_vars(pack,sub)
         if not needs then
             lake.define_pkg_need(name)
-            needs = get_extra_needs(name,args)
+            needs = get_extra_needs(name,args,static)
             if needs then
                 unsatisfied_needs[name] = nil
             end
@@ -2677,14 +2672,19 @@ local update_lua_flags  -- forward reference
 local function update_needs(ptype,args)
     local libs = {}
     for need in list_(args.needs) do
+        local static
+        if need:match '%-static$' then
+            static = true
+            need = need:gsub('%-static$','')
+        end
         if not extra_needs[need] and not builtin_needs[need] then
-            handle_unknown_need(need,args)
+            handle_unknown_need(need,args,static)
         end
         if extra_needs[need] then
             if need == 'lua' then
                 args.lua = true
             end
-            local res = get_extra_needs(need,args)
+            local res = get_extra_needs(need,args,static)
             if res then
                 append_to_field(args,'libs',res.libs)
                 append_to_field(args,'incdir',res.incdir) -- ?? might be multiple!
@@ -2740,7 +2740,7 @@ local function find_lua_dll (path)
 end
 
 
-function update_lua_flags ()
+function update_lua_flags (args,static)
     local res = {}
     if not LUA_LIBS then
         LUA_LIBS = 'lua5.1'
