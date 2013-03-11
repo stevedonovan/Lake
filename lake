@@ -33,7 +33,7 @@ Lake version 1.3  A Lua-based Build Engine
     extension, build and run, passing any remaining arguments, unless -n
     is specified. Lua scripts are run directly using Lake.
 
-  Without arguments, load a file called 'lakefile'.
+  Without arguments, use a file called 'lakefile' or 'lakefile.lua'
 
 ]]
 
@@ -71,6 +71,17 @@ function quit(reason,...)
     warning(reason,...)
     finalize()
     os.exit(1)
+end
+
+local start_t, msg_t
+
+function start_timer (msg)
+    msg_t = msg
+    start_t = os.clock()
+end
+
+function end_timer ()
+    warning("'%s' took %7.2f sec",msg_t,os.clock()-start_t)
 end
 
 function choose(cond,v1,v2)
@@ -154,8 +165,9 @@ function file.temp ()
     return res
 end
 
-function file.temp_copy (s)
+function file.temp_copy (s,ext)
     local res = file.temp()
+    if ext then res = res .. ext end
     local ok,err = file.write(res,s)
     if not ok then return nil,err end
     return res
@@ -368,7 +380,7 @@ local lua52 = rawget(_G,'setfenv') == nil
 
 function utils.execute (cmd,quiet)
     if quiet then
-        local null = " 2>&1 >"..choose(WINDOWS,'NUL','/dev/null')
+        local null = " > "..choose(WINDOWS,'NUL','/dev/null').." 2>&1"
         cmd = cmd .. null
     end
     local res1,res2,res2 = os.execute(cmd)
@@ -686,6 +698,7 @@ local function hide_spaces(q) return q:gsub(' ',marker) end
 
 function utils.split_list(s)
     s = s:gsub('^%s+',''):gsub('%s+$','') -- trim the string
+    -- on Windows spaces are escaped with quotes
     s = s:gsub('"[^"]+"',hide_spaces)
     local i1 = 1
     local ls = {}
@@ -693,8 +706,10 @@ function utils.split_list(s)
         item = item:gsub('\\ ',' ')
         append(ls,item)
     end
+    -- In Unix spaces are escaped with \
+    local pat = choose(WINDOWS,'.','[^\\]')..'[%s,]+'
     while true do
-        local i2,i3 = s:find('[^\\][%s,]+',i1)
+        local i2,i3 = s:find(pat,i1)
         if not i2 then
             append_item(s:sub(i1))
             break
@@ -1577,6 +1592,8 @@ function check(time,t)
         return
     end
 
+    if t.checked then return end
+
     if verbose then log('target: '..t.target) end
 
     if t.deps then
@@ -1594,6 +1611,7 @@ function check(time,t)
             fire(t)
         end
     end
+    t.checked = true
 end
 
 local function get_deps (deps)
@@ -1631,12 +1649,15 @@ function get_dependencies (deps)
     return deps
 end
 
+local dumped = {}
+
 -- often the actual dependencies are not known until we come to evaluate them.
 -- this function goes over all the explicit targets and checks their dependencies.
 -- Dependencies may be simple file names, or rule objects, which are here expanded
 -- into a set of file names.  Also, name references to files are resolved here.
 function expand_dependencies(t)
     if not t or not t.deps then return end
+    if t.expanded then return end
     local deps = get_dependencies(t.deps)
     -- we already have a list of explicit dependencies.
     -- @doc Lake allows dependency matching against target _names_ as opposed
@@ -1659,14 +1680,20 @@ function expand_dependencies(t)
             if target then
                 deps[i] = target.target
             elseif not exists(name) then
+                dump(t,'target')
+                dump(t.deps,'deps')
                 quit("cannot find dependency '%s'",name)
             end
         end
     end
-    if verbose then dump(deps,t.target) end
+    if verbose and not dumped[t.target] then
+        dump(deps,t.target)
+        dumped[t.target] = true
+    end
 
     -- by this point, t.deps has become a simple array of files
     t.deps = deps
+    t.expanded = true
 
     for dfile in list_(t.deps) do
         expand_dependencies (target_from_file(dfile))
@@ -1930,7 +1957,7 @@ local function process_args()
     end
     lake.set_flags()
     -- if we are called as a program, not as a library, then invoke the specified lakefile
-    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]lake%.exe' then
+    if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]f?lake%.exe$' then
         if use_lakefile then
             local orig_lakefile = lakefile
             lakefile = exists(lakefile or 'lakefile') or exists 'lakefile.lua'
@@ -2006,9 +2033,12 @@ function go()
         quit('no targets defined')
     end
 
+    --start_timer 'expand_dependencies'
     for tt in list_(all_targets_list) do
         expand_dependencies(tt)
     end
+    --end_timer()
+
     ALL_TARGETS = all_targets()
     if verbose then dump(ALL_TARGETS,'targets') end
 
@@ -2050,10 +2080,12 @@ function go()
         end)
         targets[index_list(targets,'clean')] = t
     end
+    start_timer 'build'
     for t in list_(targets) do
         t.time = filetime(t.target)
         check(t.time,t)
     end
+    end_timer()
     jobs_clear()
     if nbuild == 0 then
         if not synth_target then log 'lake: up to date' end
