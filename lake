@@ -63,13 +63,14 @@ WINDOWS = DIRSEP == '\\'
 -- search for '--end_of_libs' to skip to the Meat of the Matter!
 
 function warning(reason,...)
+    reason = reason or '?'
     local str = reason:format(...)
     io.stderr:write('lake: ',str,'\n')
 end
 
 function quit(reason,...)
     warning(reason,...)
-    finalize()
+    finalize(reason and reason:format(...))
     os.exit(1)
 end
 
@@ -1991,7 +1992,13 @@ local function process_args()
     end
 end
 
-function finalize()
+local hooks = {}
+
+function lake.add_hook (hook)
+    append(hooks,hook)
+end
+
+function finalize(reason)
     if specfile then pcall(specfile.close,specfile) end
     if outspec then
         local stat,err = pcall(outspec.close,outspec)
@@ -2000,6 +2007,9 @@ function finalize()
         else
             log('unable to recreate spec file: ',err)
         end
+    end
+    for _,h in ipairs(hooks) do
+        pcall(h,reason)
     end
 end
 
