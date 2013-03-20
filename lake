@@ -1994,7 +1994,7 @@ end
 
 local hooks = {}
 
-function lake.add_hook (hook)
+function lake.on_exit (hook)
     append(hooks,hook)
 end
 
