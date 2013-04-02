@@ -1733,7 +1733,7 @@ local function exists_lua(name) return exists(name..'.lua') end
 -- a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
 -- The .lua extension is not necessary and the file may be remote.
 function lake.install_plugin (parm)
-    if path.extension_of(parm) == '' then parm = parm..'.lua'  end
+    if path.extension_of(parm) ~= '.lua' then parm = parm..'.lua'  end
     local fname = exists(parm)
     if not fname then
         if not lake.is_remote(parm) then  quit(parm..' not found!')
