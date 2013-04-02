@@ -57,7 +57,7 @@ local change_dir,finalize,exists
 TESTING = false
 
 DIRSEP = package.config:sub(1,1)
-WINDOWS = DIRSEP == '\\'
+local Windows = DIRSEP == '\\'
 
 ---some useful library functions for manipulating file paths, lists, etc.
 -- search for '--end_of_libs' to skip to the Meat of the Matter!
@@ -86,11 +86,11 @@ function pick(a,b)
 end
 
 file = {ext='*'}
-COPY = choose(WINDOWS,'copy','cp')
+COPY = choose(Windows,'copy','cp')
 file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
 
 
-if WINDOWS then
+if Windows then
     QUIET_CMD = '> nul'
     file.filter = function() return nil end
 end
@@ -160,7 +160,7 @@ end
 
 function file.temp ()
     local res = os.tmpname()
-    if WINDOWS then -- note this necessary workaround for Windows
+    if Windows then -- note this necessary workaround for Windows
         res = env 'TMP'..res
     end
     return res
@@ -205,7 +205,7 @@ end
 
 find = {}
 
-if WINDOWS then
+if Windows then
     SYS_PREFIX = ''
 else
     SYS_PREFIX = {'/usr','/usr/share','/usr/local'}
@@ -251,7 +251,7 @@ local isfile = path.isfile
 
 -- is this an absolute @path?
 function path.isabs(path)
-    if WINDOWS then return path:find '^"*%a:' ~= nil
+    if Windows then return path:find '^"*%a:' ~= nil
     else return path:find '^/' ~= nil
     end
 end
@@ -455,12 +455,12 @@ function _mkdir(p)
 end
 
 function path.mkdir (p)
-    if WINDOWS then p = p:gsub('\\','/') end
+    if Windows then p = p:gsub('\\','/') end
     return _mkdir(p)
 end
 
 local function canonical_path (p)
-    if WINDOWS then
+    if Windows then
         return (p:gsub('/','\\')) --:lower())
     else
         return p
@@ -468,7 +468,7 @@ local function canonical_path (p)
 end
 
 local function canonical_paths (deps)
-    if WINDOWS then for i = 1,#deps do
+    if Windows then for i = 1,#deps do
         deps[i] = canonical_path(deps[i])
     end end
     return deps
@@ -512,7 +512,7 @@ local lua52 = rawget(_G,'setfenv') == nil
 
 function utils.execute (cmd,quiet)
     if quiet then
-        local null = " > "..choose(WINDOWS,'NUL','/dev/null').." 2>&1"
+        local null = " > "..choose(Windows,'NUL','/dev/null').." 2>&1"
         cmd = cmd .. null
     end
     local res1,res2,res2 = os.execute(cmd)
@@ -585,7 +585,7 @@ function utils.split_list(s)
         append(ls,item)
     end
     -- In Unix spaces are escaped with \
-    local pat = choose(WINDOWS,'.','[^\\]')..'[%s,]+'
+    local pat = choose(Windows,'.','[^\\]')..'[%s,]+'
     while true do
         local i2,i3 = s:find(pat,i1)
         if not i2 then
@@ -627,7 +627,7 @@ end
 
 function utils.remove_files (mask)
     local cmd
-    if WINDOWS then
+    if Windows then
         cmd = 'del '..mask
     else
         cmd = 'rm '..mask
@@ -652,7 +652,7 @@ end
 
 function utils.which (prog)
     if isabs(prog) then return prog end
-    if WINDOWS  then -- no 'which' commmand, so do it directly
+    if Windows then -- no 'which' commmand, so do it directly
         if extension_of(prog) == '' then prog = prog..'.exe' end
         local path = split(env 'PATH',';')
         for dir in list_(path) do
@@ -814,7 +814,7 @@ end
 --end_of_libs---------------------------------------------
 
 local job_execute, jobs_clear, found_threads, winapi, posix
-if WINDOWS then
+if Windows then
     found_threads, winapi = pcall(require, 'winapi')
 else
     found_threads, posix = pcall(require, 'posix')
@@ -986,20 +986,8 @@ local interpreters = {
 
 local check_options
 
-if WINDOWS then
-    LOCAL_EXEC = ''
-    EXE_EXT = '.exe'
-    DLL_EXT = '.dll'
-else
-    LOCAL_EXEC = './'
-    EXE_EXT = ''
-    DLL_EXT = '.so'
-end
-
-
 LIBS = ''
 CFLAGS = ''
-
 
 local function inherits_from (c)
     local mt = {__index = c}
@@ -1733,7 +1721,7 @@ local function exists_lua(name) return exists(name..'.lua') end
 -- a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
 -- The .lua extension is not necessary and the file may be remote.
 function lake.install_plugin (parm)
-    if path.extension_of(parm) ~= '.lua' then parm = parm..'.lua'  end
+    if path.extension_of(parm) ~= 'lua' then parm = parm..'.lua'  end
     local fname = exists(parm)
     if not fname then
         if not lake.is_remote(parm) then  quit(parm..' not found!')
@@ -1782,7 +1770,7 @@ local synth_target,synth_args_index
 
  function update_pwd ()
     local dir = lfs.currentdir()
-    if WINDOWS then dir = dir:lower() end -- canonical form
+    if Windows then dir = dir:lower() end -- canonical form
     PWD = dir..DIRSEP
 end
 
@@ -1833,6 +1821,23 @@ end
 local lakefile
 local unsatisfied_needs = {}
 
+local function set_platform()
+    if not PLAT then
+        PLAT = BUILD_PLAT
+    end
+    WINDOWS = PLAT=='Windows'
+    print(BUILD_PLAT,PLAT,WINDOWS)
+    if WINDOWS then
+        LOCAL_EXEC = ''
+        EXE_EXT = '.exe'
+        DLL_EXT = '.dll'
+    else
+        LOCAL_EXEC = './'
+        EXE_EXT = ''
+        DLL_EXT = '.so'
+    end 
+end
+
 local function process_args()
     -- arg is not set in interactive lua!
     if arg == nil then return end
@@ -1853,13 +1858,13 @@ local function process_args()
     if lakeconfig then
         safe_dofile (lakeconfig)
     end
-    if not PLAT then
-        if not WINDOWS then PLAT = shell('uname -s')
-        else PLAT='Windows'
-        end
-    end
+    if not Windows then
+        BUILD_PLAT = shell('uname -s')
+    else 
+        BUILD_PLAT='Windows'
+    end    
     update_pwd()
-
+    
     -- @doc [config] the environment variable LAKE_PARMS can be used to supply default global values,
     -- in the same <var>=<value> form as on the command-line; pairs are separated by semicolons.
     local parms = env 'LAKE_PARMS'
@@ -1955,6 +1960,7 @@ local function process_args()
         end
         i = i + 1
      end
+    set_platform()   
     if LAKE_CONFIG_FILE then
         safe_dofile (LAKE_CONFIG_FILE)
     end
@@ -2245,7 +2251,7 @@ function lake.set_flags(parms)
             if lang == cpp11 then
                 if compile then
                     flags = flags .. ' -std=c++0x'
-                elseif WINDOWS and not args.static then
+                elseif PLAT=='Windows' and not args.static then
                     flags = flags .. ' -shared-libstdc++'
                 end
             end
@@ -2302,7 +2308,7 @@ function lake.set_flags(parms)
         function c.massage_link (name,deps,t)
             if t.ptype ~= 'dll' then return deps end
             local def = exists(name..'.def')
-            if def and WINDOWS then
+            if def and PLAT=='Windows' then
                 deps = copy_list(deps)
                 append(deps,def)
             end
@@ -2530,7 +2536,7 @@ local function _compile(name,compile_deps,lang)
 end
 
 function find_include (f)
-    if not WINDOWS then
+    if not Windows then
         return exists('/usr/include/'..f) or exists('/usr/share/include/'..f)
     else
        -- ??? no way to tell ???
@@ -2605,7 +2611,7 @@ local function examine_config_vars(package,subtype)
     end
     -- generally you will always need a libdir for Windows; otherwise only check if specified
     if not lflags then
-        if WINDOWS or libdir ~= nil then checkdir(libdir,libdir_v) end
+        if PLAT=='Windows' or libdir ~= nil then checkdir(libdir,libdir_v) end
         checkdir(libs,libs_v,package)
     end
     if libs and CC == 'cl' and subtype == 'static' then
@@ -2723,7 +2729,7 @@ local function update_needs(ptype,args)
                 if res.flags then args.flags = concat_str(args.flags,res.flags,true) end
             end
         else
-            if not WINDOWS then
+            if PLAT ~= 'Windows' then
                 if need == 'math' then append(libs,'m')
                 elseif need == 'readline' then
                     append(libs,'readline')
@@ -2781,10 +2787,10 @@ function update_lua_flags (args,static)
             lr_cfg = luarocks.cfg
             LUA_INCLUDE_DIR = lr_cfg.variables.LUA_INCDIR
             LUA_LIB_DIR = lr_cfg.variables.LUA_LIBDIR
-            if WINDOWS then
+            if Windows then
                 LUA_DLL = find_lua_dll(lr_cfg.variables.LUAROCKS_PREFIX..'/2.0')
             end
-        elseif WINDOWS then -- no standard place, have to deduce this ourselves!
+        elseif Windows then -- no standard place, have to deduce this ourselves!
             local lua_path = utils.which(LUA_EXE)  -- usually lua, could be lua51, etc!
             if not lua_path then quit ("cannot find Lua on your path") end
             local path = dirname(lua_path)
@@ -2812,7 +2818,7 @@ function update_lua_flags (args,static)
         end
     end
     res.incdir = LUA_INCLUDE_DIR
-    if WINDOWS then
+    if Windows then
         -- recommended practice for MinGW is to link directly against the DLL
         local libs
         if CC=='gcc' and not using_LfW then
@@ -3055,7 +3061,7 @@ local function _program(ptype,name,deps,lang)
     if not cr and lang.compile then
         -- generally a good idea for Unix shared libraries
         -- for OS X, -fPIC is on by default
-        if ptype == 'dll' and not (WINDOWS or PLAT=='Darwin') then
+        if ptype == 'dll' and not (PLAT=='Windows' or PLAT=='Darwin') then
             args.flags = concat(args.flags,'-fpic')
         end
         if args.precompiled_header then
@@ -3108,7 +3114,7 @@ local function _program(ptype,name,deps,lang)
             btype = 'lib'
         end
         -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
-        if args.subsystem and WINDOWS then
+        if args.subsystem and PLAT=='Windows' then
             libs = libs..' '..SUBSYSTEM..args.subsystem
         end
         local link_str = link_prefix..subst_all_but_basic(lang[btype])
@@ -3263,7 +3269,7 @@ amt.__index = function(obj,name)
     end
 end
 
-ENV = {SEP=WINDOWS and ';' or ':'}
+ENV = {SEP=Windows and ';' or ':'}
 setmetatable(ENV,{
     __index = function(self,key)
         return env(key)
