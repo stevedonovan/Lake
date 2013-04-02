@@ -1,3 +1,3 @@
 #include <common.h>
 
-int main() { common(); }
+int main() { common(); return 0;}

@@ -74,17 +74,6 @@ function quit(reason,...)
     os.exit(1)
 end
 
-local start_t, msg_t
-
-function start_timer (msg)
-    msg_t = msg
-    start_t = os.clock()
-end
-
-function end_timer ()
-    warning("'%s' took %7.2f sec",msg_t,os.clock()-start_t)
-end
-
 function choose(cond,v1,v2)
     if type(cond) == 'string' then
         cond = cond~='0' and cond~='false'
@@ -105,6 +94,17 @@ if WINDOWS then
     QUIET_CMD = '> nul'
     file.filter = function() return nil end
 end
+
+function file.time(fname)
+    local time,err = attributes(fname,'modification')
+    if time then
+        return time
+    else
+        return -1
+    end
+end
+
+local filetime = file.time
 
 function file.generate_target(r,tname,root)
     local odir = r.output_dir
@@ -222,17 +222,6 @@ function find.include_path(candidates)
     return res
 end
 
-function file.time(fname)
-    local time,err = attributes(fname,'modification')
-    if time then
-        return time
-    else
-        return -1
-    end
-end
-
-local filetime = file.time
-
 local function at(s,i)
     return s:sub(i,i)
 end
@@ -240,35 +229,33 @@ end
 path = {}
 local join
 
-function exists(path,fname)
+function path.exists(path,fname)
     if fname then fname = join(path,fname) else fname = path end
     if attributes(fname) ~= nil then
         return fname
     end
 end
-path.exists = exists
+local exists = path.exists
 file.exists = exists
 
--- is @path a directory?
-local function isdir(path)
+function path.isdir(path)
     if path:match '/$' then path = path:sub(1,-2) end
     return attributes(path,'mode') == 'directory'
 end
-path.isdir = isdir
+local isdir = path.isdir
 
--- is @path a file?
-local function isfile(path)
+function path.isfile(path)
     return attributes(path,'mode') == 'file'
 end
-path.isfile = isfile
+local isfile = path.isfile
 
 -- is this an absolute @path?
-local function isabs(path)
+function path.isabs(path)
     if WINDOWS then return path:find '^"*%a:' ~= nil
     else return path:find '^/' ~= nil
     end
 end
-path.isabs = isabs
+local isabs = path.isabs
 
 local update_pwd
 
@@ -298,7 +285,7 @@ local function concat_str (v,u,no_quote)
 end
 
 local get_files
-function get_files (files,path,pat,recurse)
+function path.get_files (files,path,pat,recurse)
     for f in lfs.dir(path) do
         if f ~= '.' and f ~= '..' then
             local file = f
@@ -311,9 +298,9 @@ function get_files (files,path,pat,recurse)
         end
     end
 end
-path.get_files = get_files
+get_files = path.get_files
 
-local function get_directories (dir)
+function path.get_directories (dir)
     local res = {}
     for f in lfs.dir(dir) do
         if f ~= '.' and f ~= '..' then
@@ -323,11 +310,11 @@ local function get_directories (dir)
     end
     return res
 end
-path.get_directories = get_directories
+get_directories = path.get_directories
 
 local splitpath
 
-local function files_from_mask (mask,recurse)
+function path.files_from_mask (mask,recurse)
     local path,pat = splitpath(mask)
     if not pat:find('%*') then return nil end
     local files = {}
@@ -337,27 +324,171 @@ local function files_from_mask (mask,recurse)
     get_files(files,path,pat,recurse)
     return files
 end
-path.files_from_mask = files_from_mask
+local files_from_mask = path.files_from_mask
 
 local list_
 
-local function mask(mask)
+function path.mask(mask)
     return list_(files_from_mask(mask))
 end
-path.mask = mask
+local mask = path.mask
 
-local function is_mask (pat)
+function path.is_mask (pat)
     return pat:find ('*',1,true)
 end
-path.is_mask = is_mask
 
-local function dirs(dir)
+function path.dirs(dir)
     return list_(get_directories(dir))
 end
-path.dirs = dirs
+
+function path.splitpath(path)
+    local i = #path
+    local ch = at(path,i)
+    while i > 0 and ch ~= '/' and ch ~= '\\' do
+        i = i - 1
+        ch = at(path,i)
+    end
+    if i == 0 then
+        return '',path
+    else
+        return path:sub(1,i-1), path:sub(i+1)
+    end
+end
+splitpath = path.splitpath
+
+-- given a path @path, return the root part and the extension part
+-- if there's no extension part, the second value will be empty
+function path.splitext(path)
+    local i = #path
+    local ch = at(path,i)
+    while i > 0 and ch ~= '.' do
+        if ch == '/' or ch == '\\' then
+            return path,''
+        end
+        i = i - 1
+        ch = at(path,i)
+    end
+    if i == 0 then
+        return path,''
+    else
+        return path:sub(1,i-1),path:sub(i)
+    end
+end
+local splitext = path.splitext
+
+-- return the directory part of @P.
+-- If strict and the path is already a directory, return that
+function path.dirname(P,strict)
+    if isdir(P) then return P end
+    local p1,p2 = splitpath(P)
+    return p1
+end
+local dirname = path.dirname
+
+-- return the file part of @path
+function path.basename(path)
+    local p1,p2 = splitpath(path)
+    return p2
+end
+local basename = path.basename
+
+function path.extension_of(path)
+    local p1,p2 = splitext(path)
+    return p2
+end
+local extension_of = path.extension_of
+
+function path.expanduser(path)
+    if path:sub(1,1) == '~' then
+        local home = env 'HOME'
+        if not home then -- has to be Windows
+            home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
+        end
+        return home..path:sub(2)
+    else
+        return path
+    end
+end
+local expanduser = path.expanduser
+
+
+function path.replace_extension (path,ext)
+    local p1,p2 = splitext(path)
+    return p1..ext
+end
+local replace_extension = path.replace_extension
+
+-- return the path resulting from combining the path;
+-- if the second is already an absolute path, then it returns it
+function path.join(p1,p2,...)
+    if select('#',...) > 0 then
+        local p = path.join(p1,p2)
+        local args = {...}
+        for i = 1,#args do
+            p = join(p,args[i])
+        end
+        return p
+    end
+    if isabs(p2) then return p2 end
+    local endc = at(p1,#p1)
+    if endc ~= '/' and endc ~= '\\' then
+        p1 = p1..DIRSEP
+    end
+    return p1..p2
+end
+join = path.join
+
+local _mkdir
+
+function _mkdir(p)
+    -- windows root drive case
+    if p:find '^%a:/*$' then
+        return true
+    end
+    if not path.isdir(p) then
+        local subp = p:match '(.+)/[^/]+$'
+        if subp and not _mkdir(subp) then return nil,'cannot create '..subp end
+        return lfs.mkdir(p)
+    else
+        return true
+   end
+end
+
+function path.mkdir (p)
+    if WINDOWS then p = p:gsub('\\','/') end
+    return _mkdir(p)
+end
+
+local function canonical_path (p)
+    if WINDOWS then
+        return (p:gsub('/','\\')) --:lower())
+    else
+        return p
+    end
+end
+
+local function canonical_paths (deps)
+    if WINDOWS then for i = 1,#deps do
+        deps[i] = canonical_path(deps[i])
+    end end
+    return deps
+end
+
 
 utils = {}
-local function split(s,re)
+
+local start_t, msg_t
+
+function utils.start_timer (msg)
+    msg_t = msg
+    start_t = os.clock()
+end
+
+function utils.end_timer ()
+    warning("'%s' took %7.2f sec",msg_t,os.clock()-start_t)
+end
+
+function utils.split(s,re)
     local i1 = 1
     local ls = {}
     re = re or '%s+'
@@ -371,9 +502,9 @@ local function split(s,re)
         i1 = i3+1
     end
 end
-utils.split = split
+local split = utils.split
 
-local function split2(s,delim)
+function utils.split2(s,delim)
   return s:match('([^'..delim..']+)'..delim..'(.*)')
 end
 
@@ -392,7 +523,297 @@ function utils.execute (cmd,quiet)
     end
 end
 
-local job_execute, jobs_clear, found_threads, winapi, posix, index_list
+
+-- this expands any $(VAR) occurances in @s (where VAR is a global varialable).
+-- If VAR is not present, then the expansion is just the empty string, unless
+-- it is on the @exclude list, where it remains unchanged, ready for further
+-- expansion at a later stage.
+function utils.subst(str,exclude,T)
+    local count
+    T = T or _G
+    repeat
+        local excluded = 0
+        str, count = str:gsub('%$%(([%w,_]+)%)',function (f)
+            if exclude and exclude[f] then
+                excluded = excluded + 1
+                return '$('..f..')'
+            else
+                local s = T[f]
+                if not s then return ''
+                else return s end
+            end
+        end)
+    until count == 0 or exclude
+    return str
+end
+local subst = utils.subst
+
+function utils.substitute (str,T) return subst(str,nil,T) end
+
+-- this executes a shell command @cmd, which may contain % string.format specifiers,
+-- in which case any extra arguments are used. It may contain ${VAR} which will
+-- be substituted
+function utils.shell_nl(cmd,...)
+    cmd = subst(cmd):format(...)
+    local inf = io.popen(cmd..' 2>&1','r')
+    if not inf then return '' end
+    local res = inf:read('*a')
+    inf:close()
+    return res
+end
+
+-- a convenient function which gets rid of the trailing line-feed from shell_nl()
+function utils.shell(cmd,...)
+    return (utils.shell_nl(cmd,...):gsub('\n$',''))
+end
+local shell = utils.shell
+
+-- splits a list separated by ' ' or ','. Note that some hackery is needed
+-- to preserve double quoted items.
+
+local marker = string.char(4)
+local function hide_spaces(q) return q:gsub(' ',marker) end
+
+function utils.split_list(s)
+    s = s:gsub('^%s+',''):gsub('%s+$','') -- trim the string
+    -- on Windows spaces are escaped with quotes
+    s = s:gsub('"[^"]+"',hide_spaces)
+    local i1 = 1
+    local ls = {}
+    local function append_item (item)
+        item = item:gsub('\\ ',' ')
+        append(ls,item)
+    end
+    -- In Unix spaces are escaped with \
+    local pat = choose(WINDOWS,'.','[^\\]')..'[%s,]+'
+    while true do
+        local i2,i3 = s:find(pat,i1)
+        if not i2 then
+            append_item(s:sub(i1))
+            break
+        end
+        append_item(s:sub(i1,i2))
+        i1 = i3+1
+    end
+    for i = 1,#ls do
+        if ls[i]:find(marker) then
+            ls[i] = ls[i]:gsub(marker,' ') --:gsub('"','')
+        end
+    end
+    return ls
+end
+local split_list = utils.split_list
+local expand_args
+
+function utils.forall(ls,action)
+    ls = expand_args(ls)
+    for i,v in ipairs(ls) do
+        action(v)
+    end
+end
+local forall = utils.forall
+
+-- useful global function which deletes a list of files @items
+function utils.remove(items)
+    if type(items) == 'string' then
+        items = split_list(items)
+    end
+    forall(items,function(f)
+        if os.remove(f) then
+            log ('removing',f)
+        end
+    end)
+end
+
+function utils.remove_files (mask)
+    local cmd
+    if WINDOWS then
+        cmd = 'del '..mask
+    else
+        cmd = 'rm '..mask
+    end
+    exec(cmd)
+end
+
+function utils.make_callable (obj,fun)
+    local mt = getmetatable(obj)
+    if not mt then
+        mt = {}
+        setmetatable(obj,mt)
+    end
+    mt.__call = function(obj,...) return fun(...) end
+    return mt
+end
+
+function utils.quote(fun)
+    return function(...) return fun(...) end
+end
+
+
+function utils.which (prog)
+    if isabs(prog) then return prog end
+    if WINDOWS  then -- no 'which' commmand, so do it directly
+        if extension_of(prog) == '' then prog = prog..'.exe' end
+        local path = split(env 'PATH',';')
+        for dir in list_(path) do
+            local file = exists(dir,prog)
+            if file then return file end
+        end
+        return false
+    else
+        local res = shell('which %s 2> /dev/null',prog)
+        if res == '' then return false end
+        return res
+    end
+end
+
+function is_simple_list (t)
+    return type(t) == 'table' and t[1]
+end
+
+list = {}
+
+local append_list,copy_list,copy_table,append_table,erase_list,concat_list,find_list,index_list
+
+function list.extend(l1,l2)
+    for i,v in ipairs(l2) do
+        append(l1,v)
+    end
+    return l1
+end
+append_list = list.extend
+
+function list.append_unique(l,v)
+    if not index_list(l,v) then
+        append(l,v)
+    end
+end
+
+append_unique = list.append_unique
+
+function list.extend_unique(l1,l2)
+    l1 = l1 or {}
+    for i,v in ipairs(l2) do
+        list.append_unique(l1,v)
+    end
+    return l1
+end
+append_list_unique = list.extend_unique
+
+function list.copy (l1)
+    return append_list({},l1)
+end
+copy_list = list.copy
+
+function copy_table (t)
+    local res = {}
+    for k,v in pairs(t) do
+        res[k] = v
+    end
+    return res
+end
+table.copy = copy_table
+
+function append_table(l1,l2,no_overwrite)
+    if not l2 then return end
+    for k,v in pairs(l2) do
+        if not no_overwrite or l1[k] == nil then
+            l1[k] = v
+        end
+    end
+    return l1
+end
+table.update = append_table
+
+function table.set(ls)
+    local res = {}
+    for item in list_(ls) do
+        res[item] = true
+    end
+    return res
+end
+
+function list.erase(l1,l2)
+    for i,v in ipairs(l2) do
+        local idx = index_list(l1,v)
+        if idx then
+            table.remove(l1,idx)
+        end
+    end
+end
+erase_list = list.erase
+
+function list.concat(pre,ls,sep)
+    local res = ''
+    for i,v in ipairs(ls) do
+        if v ~= '' then
+            res = res..pre..v..sep
+        end
+    end
+    return res
+end
+concat_list = list.concat
+
+function list.index(ls,val)
+    for i,v in ipairs(ls) do
+        if v == val then return i end
+    end
+end
+index_list = list.index
+
+function list.find(ls,field,value)
+    for i,v in ipairs(ls) do
+        if v[field] == value then
+            return v
+        end
+    end
+end
+find_list = list.find
+
+-- used to iterate over a list, which may be given as a string:
+--  for val in list(ls) do ... end
+--  for val in list 'one two three' do .. end
+function list_(ls)
+    if type(ls) == 'string' then
+        ls = split_list(ls)
+    end
+    local n = #ls
+    local i = 0
+    return function()
+        i = i + 1
+        if i > n then return nil end
+        return ls[i]
+    end
+end
+
+
+utils.make_callable(list,list_)
+
+
+
+function list.column(ls,f)
+    local res = {}
+    for i,t in ipairs(ls) do
+        append(res,t[f])
+    end
+    return res
+end
+column_list = list.column
+
+function list.parm_concat(ls,istart)
+    local s = ' '
+    istart = istart or 1
+    for i = istart,#ls do
+        local a = ls[i]
+        if a:find(' ') then a = '"'..a..'"' end
+        s = s..a..' '
+    end
+    return s
+end
+
+--end_of_libs---------------------------------------------
+
+local job_execute, jobs_clear, found_threads, winapi, posix
 if WINDOWS then
     found_threads, winapi = pcall(require, 'winapi')
 else
@@ -486,6 +907,8 @@ if found_threads then
         if n_threads < 2 then
             execute_wrapper(cmd,t,callback)
         else
+            -- crucial bit of synchronization: only run processes in parallel
+            -- generated from the _same rule_
             if t.rule ~= current_rule then
                 while #processes > 0 do
                     jobs_wait()
@@ -510,414 +933,6 @@ else
 end
 
 
--- given a path @path, return the directory part and a file part.
--- if there's no directory part, the first value will be empty
-function splitpath(path)
-    local i = #path
-    local ch = at(path,i)
-    while i > 0 and ch ~= '/' and ch ~= '\\' do
-        i = i - 1
-        ch = at(path,i)
-    end
-    if i == 0 then
-        return '',path
-    else
-        return path:sub(1,i-1), path:sub(i+1)
-    end
-end
-path.splitpath = splitpath
-
--- given a path @path, return the root part and the extension part
--- if there's no extension part, the second value will be empty
-local function splitext(path)
-    local i = #path
-    local ch = at(path,i)
-    while i > 0 and ch ~= '.' do
-        if ch == '/' or ch == '\\' then
-            return path,''
-        end
-        i = i - 1
-        ch = at(path,i)
-    end
-    if i == 0 then
-        return path,''
-    else
-        return path:sub(1,i-1),path:sub(i)
-    end
-end
-path.splitext = splitext
-
--- return the directory part of @P.
--- If strict and the path is already a directory, return that
-local function dirname(P,strict)
-    if isdir(P) then return P end
-    local p1,p2 = splitpath(P)
-    return p1
-end
-path.dirname = dirname
-
--- return the file part of @path
-local function basename(path)
-    local p1,p2 = splitpath(path)
-    return p2
-end
-path.basename = basename
-
-local function extension_of(path)
-    local p1,p2 = splitext(path)
-    return p2
-end
-path.extension_of = extension_of
-
-local function expanduser(path)
-    if path:sub(1,1) == '~' then
-        local home = env 'HOME'
-        if not home then -- has to be Windows
-            home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
-        end
-        return home..path:sub(2)
-    else
-        return path
-    end
-end
-path.expanduser = expanduser
-
-
-local function replace_extension (path,ext)
-    local p1,p2 = splitext(path)
-    return p1..ext
-end
-path.replace_extension = replace_extension
-
--- return the path resulting from combining the path;
--- if the second is already an absolute path, then it returns it
-function join(p1,p2,...)
-    if select('#',...) > 0 then
-        local p = path.join(p1,p2)
-        local args = {...}
-        for i = 1,#args do
-            p = join(p,args[i])
-        end
-        return p
-    end
-    if isabs(p2) then return p2 end
-    local endc = at(p1,#p1)
-    if endc ~= '/' and endc ~= '\\' then
-        p1 = p1..DIRSEP
-    end
-    return p1..p2
-end
-path.join = join
-
-local _mkdir
-
-function _mkdir(p)
-    -- windows root drive case
-    if p:find '^%a:/*$' then
-        return true
-    end
-    if not path.isdir(p) then
-        local subp = p:match '(.+)/[^/]+$'
-        if subp and not _mkdir(subp) then return nil,'cannot create '..subp end
-        return lfs.mkdir(p)
-    else
-        return true
-   end
-end
-
-function path.mkdir (p)
-    if WINDOWS then p = p:gsub('\\','/') end
-    return _mkdir(p)
-end
-
-local function canonical_path (p)
-    if WINDOWS then
-        return (p:gsub('/','\\')) --:lower())
-    else
-        return p
-    end
-end
-
-local function canonical_paths (deps)
-    if WINDOWS then for i = 1,#deps do
-        deps[i] = canonical_path(deps[i])
-    end end
-    return deps
-end
-
-
--- this expands any $(VAR) occurances in @s (where VAR is a global varialable).
--- If VAR is not present, then the expansion is just the empty string, unless
--- it is on the @exclude list, where it remains unchanged, ready for further
--- expansion at a later stage.
-local function subst(str,exclude,T)
-    local count
-    T = T or _G
-    repeat
-        local excluded = 0
-        str, count = str:gsub('%$%(([%w,_]+)%)',function (f)
-            if exclude and exclude[f] then
-                excluded = excluded + 1
-                return '$('..f..')'
-            else
-                local s = T[f]
-                if not s then return ''
-                else return s end
-            end
-        end)
-    until count == 0 or exclude
-    return str
-end
-utils.subst = subst
-
-function utils.substitute (str,T) return subst(str,nil,T) end
-
--- this executes a shell command @cmd, which may contain % string.format specifiers,
--- in which case any extra arguments are used. It may contain ${VAR} which will
--- be substituted
-local function shell_nl(cmd,...)
-    cmd = subst(cmd):format(...)
-    local inf = io.popen(cmd..' 2>&1','r')
-    if not inf then return '' end
-    local res = inf:read('*a')
-    inf:close()
-    return res
-end
-utils.shell_nl = shell_nl
-
--- a convenient function which gets rid of the trailing line-feed from shell_nl()
-local function shell(cmd,...)
-    return (shell_nl(cmd,...):gsub('\n$',''))
-end
-utils.shell = shell
-
--- splits a list separated by ' ' or ','. Note that some hackery is needed
--- to preserve double quoted items.
-
-local marker = string.char(4)
-local function hide_spaces(q) return q:gsub(' ',marker) end
-
-function utils.split_list(s)
-    s = s:gsub('^%s+',''):gsub('%s+$','') -- trim the string
-    -- on Windows spaces are escaped with quotes
-    s = s:gsub('"[^"]+"',hide_spaces)
-    local i1 = 1
-    local ls = {}
-    local function append_item (item)
-        item = item:gsub('\\ ',' ')
-        append(ls,item)
-    end
-    -- In Unix spaces are escaped with \
-    local pat = choose(WINDOWS,'.','[^\\]')..'[%s,]+'
-    while true do
-        local i2,i3 = s:find(pat,i1)
-        if not i2 then
-            append_item(s:sub(i1))
-            break
-        end
-        append_item(s:sub(i1,i2))
-        i1 = i3+1
-    end
-    for i = 1,#ls do
-        if ls[i]:find(marker) then
-            ls[i] = ls[i]:gsub(marker,' ') --:gsub('"','')
-        end
-    end
-    return ls
-end
-local split_list = utils.split_list
-local expand_args
-
-function utils.forall(ls,action)
-    ls = expand_args(ls)
-    for i,v in ipairs(ls) do
-        action(v)
-    end
-end
-local forall = utils.forall
-
--- useful global function which deletes a list of files @items
-function utils.remove(items)
-    if type(items) == 'string' then
-        items = split_list(items)
-    end
-    forall(items,function(f)
-        if os.remove(f) then
-            log ('removing',f)
-        end
-    end)
-end
-local remove = utils.remove
-
-function utils.remove_files (mask)
-    local cmd
-    if WINDOWS then
-        cmd = 'del '..mask
-    else
-        cmd = 'rm '..mask
-    end
-    exec(cmd)
-end
-local remove_files = utils.remove_files
-
-function is_simple_list (t)
-    return type(t) == 'table' and t[1]
-end
-
-list = {}
-
-local append_list,copy_list,copy_table,append_table,erase_list,concat_list,find_list
-
-function append_list(l1,l2)
-    for i,v in ipairs(l2) do
-        append(l1,v)
-    end
-    return l1
-end
-list.extend = append_list
-
-local function append_unique(l,v)
-    if not index_list(l,v) then
-        append(l,v)
-    end
-end
-list.append_unique = append_unique
-
-local function append_list_unique(l1,l2)
-    l1 = l1 or {}
-    for i,v in ipairs(l2) do
-        append_unique(l1,v)
-    end
-    return l1
-end
-list.extend_unique = append_list_unique
-
-function copy_list (l1)
-    return append_list({},l1)
-end
-list.copy = copy_list
-
-function copy_table (t)
-    local res = {}
-    for k,v in pairs(t) do
-        res[k] = v
-    end
-    return res
-end
-table.copy = copy_table
-
-function append_table(l1,l2,no_overwrite)
-    if not l2 then return end
-    for k,v in pairs(l2) do
-        if not no_overwrite or l1[k] == nil then
-            l1[k] = v
-        end
-    end
-    return l1
-end
-table.update = append_table
-
-function table.set(ls)
-    local res = {}
-    for item in list_(ls) do
-        res[item] = true
-    end
-    return res
-end
-
-function erase_list(l1,l2)
-    for i,v in ipairs(l2) do
-        local idx = index_list(l1,v)
-        if idx then
-            table.remove(l1,idx)
-        end
-    end
-end
-list.erase = erase_list
-
-function concat_list(pre,ls,sep)
-    local res = ''
-    for i,v in ipairs(ls) do
-        if v ~= '' then
-            res = res..pre..v..sep
-        end
-    end
-    return res
-end
-list.concat = concat_list
-
-function index_list(ls,val)
-    for i,v in ipairs(ls) do
-        if v == val then return i end
-    end
-end
-list.index = index_list
-
-function find_list(ls,field,value)
-    for i,v in ipairs(ls) do
-        if v[field] == value then
-            return v
-        end
-    end
-end
-list.find = find_list
-
--- used to iterate over a list, which may be given as a string:
---  for val in list(ls) do ... end
---  for val in list 'one two three' do .. end
-function list_(ls)
-    if type(ls) == 'string' then
-        ls = split_list(ls)
-    end
-    local n = #ls
-    local i = 0
-    return function()
-        i = i + 1
-        if i > n then return nil end
-        return ls[i]
-    end
-end
-
-function utils.make_callable (obj,fun)
-    local mt = getmetatable(obj)
-    if not mt then
-        mt = {}
-        setmetatable(obj,mt)
-    end
-     mt.__call = function(obj,...) return fun(...) end
-    return mt
-end
-
-utils.make_callable(list,list_)
-
-function append_unique(ls,val)
-    if not index_list(ls,val) then
-        return append(ls,val)
-    end
-end
-list.append_unique = append_unique
-
-function column_list(ls,f)
-    local res = {}
-    for i,t in ipairs(ls) do
-        append(res,t[f])
-    end
-    return res
-end
-list.column = column_list
-
-local function parm_list_concat(ls,istart)
-    local s = ' '
-    istart = istart or 1
-    for i = istart,#ls do
-        local a = ls[i]
-        if a:find(' ') then a = '"'..a..'"' end
-        s = s..a..' '
-    end
-    return s
-end
-
-
 -- for debug purposes: dump out a table
 function dump(ls,msg)
     log ('<<',msg or '')
@@ -929,23 +944,6 @@ function dump(ls,msg)
         log(ls)
     end
     log '>>'
-end
-
-function utils.which (prog)
-    if isabs(prog) then return prog end
-    if WINDOWS  then -- no 'which' commmand, so do it directly
-        if extension_of(prog) == '' then prog = prog..'.exe' end
-        local path = split(env 'PATH',';')
-        for dir in list_(path) do
-            local file = exists(dir,prog)
-            if file then return file end
-        end
-        return false
-    else
-        local res = shell('which %s 2> /dev/null',prog)
-        if res == '' then return false end
-        return res
-    end
 end
 
 --- answering the question: is an include file within the MSVC include path?
@@ -981,7 +979,6 @@ local function concat_if_table(t,field)
     end
 end
 
---end_of_libs---------------------------------------------
 
 local interpreters = {
     ['.lua'] = 'lua', ['.py'] = 'python',
@@ -1019,7 +1016,6 @@ local function appender ()
     end)
     return t
 end
-
 
 lake = {}
 
@@ -1071,8 +1067,8 @@ function lake.register(lang,extra)
 end
 
 -- @parms any <var>=<value> pair means set the global variable <var> to the <value>, as a string.
-function process_var_pair(a)
-    local var,val = split2(a,'=')
+local function process_var_pair(a)
+    local var,val = utils.split2(a,'=')
     if var then
         _G[var] = val
         return true
@@ -1087,6 +1083,8 @@ local function rebase (deps,base)
     end
     return deps
 end
+
+local get_target_list
 
 -- @deps dependencies are stored as lists, but if you go through deps_arg, then any string
 -- delimited with ' ' or ',' will be converted into an appropriate list.
@@ -1151,10 +1149,6 @@ end
 
 lake.expand_args = expand_args
 
-function utils.quote(fun)
-    return function(...) return fun(...) end
-end
-
 utils.foreach = utils.quote(forall)
 
 local tmt,tcnt = {},1
@@ -1218,7 +1212,7 @@ local function target_add_deps (t,deps)
     end
 end
 
-function phony(deps,cmd)
+function lake.phony(deps,cmd)
     return new_target('*',deps,cmd,true)
 end
 
@@ -1254,6 +1248,8 @@ function rt.deps_filename (r,name)
     local t = find_list(r.targets,'base',splitext(name))
     return replace_extension(t.target,'.d'), t.input
 end
+
+local deps_from_d_file
 
 
 -- add a new target to a rule object, with name @tname and optional dependencies @deps.
@@ -1440,12 +1436,12 @@ end
 
 -- @doc returns a copy of all the targets. The variable ALL_TARGETS is
 -- predefined with a copy
-function all_targets()
+function lake.all_targets()
     return column_list(all_targets_list,'target')
 end
 
 -- given a filename @fname, find out the corresponding target object.
-function target_from_file(fname,target)
+local function target_from_file(fname,target)
     return find_list(all_targets_list,target or 'target',fname)
 end
 
@@ -1470,7 +1466,7 @@ function exec(s,dont_fail,t)
     end
 end
 
-function subst_all_but_basic(s)
+local function subst_all_but_basic(s)
     return subst(s,basic_variables)
 end
 
@@ -1488,12 +1484,11 @@ local function relative_to (rpath,bpath)
     else
         rpath = '../../'..rpath
     end
-    --print(rpath,i1,i2)
     return rpath
 end
 
 
-function fire(t)
+local function fire(t)
     if not t.fake then
         -- @doc compilers often support the compiling of multiple files at once, which
         -- can be a lot faster. The trick here is to combine the targets of such tools
@@ -1554,13 +1549,14 @@ function fire(t)
     if ttype == 'string' and t.cmd ~= '' then -- it's a non-empty shell command
         if t.rule and not TESTING then
             local cmd = subst(t.cmd)
+            if not basic_print then
+                log(cmd)
+            end
             job_execute(cmd,t,function(ok,code,inf)
                 local filter = t.rule.filter or nop
                 local outf = t.rule.stdout and io.stdout or io.stderr
                 if basic_print and ok then
                     log('built',t.target)
-                else
-                    log(cmd)
                 end
                 filter({TARGET,INPUT,t.rule},'start')
                 for line in inf:lines() do
@@ -1656,7 +1652,7 @@ local dumped = {}
 -- this function goes over all the explicit targets and checks their dependencies.
 -- Dependencies may be simple file names, or rule objects, which are here expanded
 -- into a set of file names.  Also, name references to files are resolved here.
-function expand_dependencies(t)
+local function expand_dependencies(t)
     if not t or not t.deps then return end
     if t.expanded then return end
     local deps = get_dependencies(t.deps)
@@ -1721,7 +1717,7 @@ function lake.download (url,pathname)
         url = url:gsub('^get:','',1)
         url = canonical_lake_files..url
     end
-    print ('downloading... '..url)
+    log ('downloading... '..url)
     pathname = pathname or path.basename(url)
     local stat = utils.execute(getter..pathname..' '..url,true)
     return stat and path.exists(pathname)
@@ -1759,7 +1755,7 @@ function lake.install_plugin (parm)
         sub = '/lake/'
     end
     local dest = lake.home..sub..package..'.lua'
-    print('copying '..fname..' to '..dest)
+    log ('copying '..fname..' to '..dest)
     file.copy(fname, dest)
     if kind == 'lang' then
         -- lang packages are special since they are available
@@ -1793,7 +1789,7 @@ end
 local dir_stack = {}
 local push,pop = table.insert,table.remove
 
-function change_dir (path)
+function lake.chdir (path)
     if not path then return end
     if path == '!' or path == '<' then
         lfs.chdir(pop(dir_stack))
@@ -1807,7 +1803,7 @@ function change_dir (path)
     update_pwd()
 end
 
-lake.chdir = change_dir
+change_dir = lake.chdir
 
 function lake.concurrent_jobs (nj)
     if not found_threads then return nil,"no threading available; winapi/posix needed" end
@@ -1987,7 +1983,7 @@ local function process_args()
                 or "use -w to write skeleton needs files")
             quit "unsatisfied needs"
         end
-        go()
+        lake.go()
         finalize()
     end
 end
@@ -2022,20 +2018,7 @@ end
 
 utils.make_callable(lake,lake_)
 
-local on_exit_list = {}
-
--- @doc can arrange for a function to be called after the lakefile returns
--- to lake, but before the dependencies are calculated. This can be used
--- to generate a default target for special applications.
-function lake.on_exit(fun)
-    append(on_exit_list,fun)
-end
-
-function go()
-
-    for _,exit in ipairs(on_exit_list) do
-        exit()
-    end
+function lake.go()
 
     if #all_targets_list == 0 then
         specfile = nil
@@ -2043,13 +2026,11 @@ function go()
         quit('no targets defined')
     end
 
-    --start_timer 'expand_dependencies'
     for tt in list_(all_targets_list) do
         expand_dependencies(tt)
     end
-    --end_timer()
 
-    ALL_TARGETS = all_targets()
+    ALL_TARGETS = lake.all_targets()
     if verbose then dump(ALL_TARGETS,'targets') end
 
     local synthesize_clean
@@ -2090,12 +2071,12 @@ function go()
         end)
         targets[index_list(targets,'clean')] = t
     end
-    start_timer 'build'
+    utils.start_timer 'build'
     for t in list_(targets) do
         t.time = filetime(t.target)
         check(t.time,t)
     end
-    end_timer()
+    utils.end_timer()
     jobs_clear()
     if nbuild == 0 then
         if not synth_target then log 'lake: up to date' end
@@ -2113,10 +2094,10 @@ end
 -- the target's language may define a runner; otherwise we look for an interpreter
 -- or default to local execution of the program.
 function lake.run(prog,args,istart)
-    local args = parm_list_concat(args,istart)
+    local args = list.parm_concat(args,istart)
     local exe
     if istarget(prog) then
-        local lang = prog.link_lang -- prog.rule and prog.rule.lang
+        local lang = prog.link_lang -- language used to link target
         if lang and lang.runner then
             return lang.runner(prog.target,args)
         end
@@ -2194,7 +2175,7 @@ function lake.set_flags(parms)
             _G[k] = v
         end
     end
-    -- @doc Microsft Visual C++ compiler prefered on Windows, if present
+    -- @doc Microsoft Visual C++ compiler prefered on Windows, if present
     if PLAT=='Windows' and utils.which 'cl' and not CC then
         CC = 'cl'
         CXX = 'cl'
@@ -2669,7 +2650,7 @@ end
 local function handle_unknown_need (name,args,static)
     define_need(name,function()
         local ok,needs,nfun,needs_package
-        local pack,sub = split2(name,'%-')
+        local pack,sub = utils.split2(name,'%-')
         pack = pack or name
         needs_package = 'lake.needs.'..pack
 
@@ -2780,7 +2761,6 @@ local using_LfW
 local function find_lua_dll (path)
     return exists(path,'lua5.1.dll') or exists(path,'lua51.dll') or exists(path,'liblua51.dll')
 end
-
 
 function update_lua_flags (args,static)
     local res = {}
@@ -2945,14 +2925,14 @@ local function _program(ptype,name,deps,lang)
         --- if the name contains wildcards, then we make up a new unique target
         --- that depends on all the files. So for instance 'c.program '*' will compile
         --- all C files in a directory as programs.
-        if name and is_mask(name) then
+        if name and path.is_mask(name) then
             local names = expand_args(name,args.ext or lang.ext,args.recurse,args.base)
             targets = {}
             for i,name in ipairs(names) do
                 args.name = splitext(name)
                 targets[i] = _program(ptype,args,'',lang)
             end
-            return phony(targets,'')
+            return lake.phony(targets,'')
         end
         if args.shared or args.dll then ptype = 'dll' end
         src = args.src
