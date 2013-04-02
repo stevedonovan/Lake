@@ -1805,13 +1805,19 @@ end
 
 change_dir = lake.chdir
 
-function lake.concurrent_jobs (nj)
+local n_threads_override
+
+function lake.concurrent_jobs (nj, override)
     if not found_threads then return nil,"no threading available; winapi/posix needed" end
     if type(nj) ~= 'number' then return nil,"number of jobs must be a integer" end
-    n_threads = nj
-    return true
+    if override or not n_threads_override then
+        n_threads = nj
+        n_threads_override = override
+        return true
+    else
+        return nil,"overriden by -j flag"
+    end
 end
-
 
 local function safe_dofile (name)
     if _DEBUG then
@@ -1897,7 +1903,7 @@ local function process_args()
             elseif opt == 'd' then
                 change_dir(getarg())
             elseif opt == 'j' then
-                local ok, err = lake.concurrent_jobs (tonumber(getarg()))
+                local ok, err = lake.concurrent_jobs (tonumber(getarg()),true)
                 if not ok then quit(err) end
             elseif opt == 'b' then
                 basic_print = true

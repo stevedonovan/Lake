@@ -1,5 +1,5 @@
 -----------
--- global functions
+-- global functions available with Lake.
 
 --- write out a warning message, where `reason` is a `string.format` string.
 function warning(reason,...)
@@ -11,15 +11,19 @@ function quit(reason,...)
 -- alias `IF`
 function choose(cond,v1,v2)
 
--- return `a` if it isn't `nil`, otherwise `b`
+--- return `a` if it isn't `nil`, otherwise `b`
 function pick(a,b)
 
--- for debug purposes: dump out a table with optional message
+--- for debug purposes: dump out a table with optional message
 function dump(t,msg)
 
-function target(tname,deps,cmd,upfront)
+--- create a target with dependencies and an action
+-- `deps` is a list as defined by `lake.deps_args`, and `cmd`
+-- may be a string (a command to be executed) or a Lua function.
+function target(name,deps,cmd,upfront)
 
---- defines the default target for this lakefile
+--- defines the default target for this lakefile.
+-- It is passed a list of targets as dependencies.
 function default(...)
 
 -- create a rule object, mapping input files with extension `in_ext` to
@@ -243,9 +247,7 @@ function lake.register(lang,extra)
 --- any string separated with ' ' or ',' will be converted into an appropriate list.
 -- This function is guaranteed to return a plain list, and will wrap other objects like
 -- targets and rules appropriately. Strings, targets, rules and target lists are
--- allowed.
---
--- Third argument determines whether the result must be reduced to strings.
+-- allowed. `returns_strings` determines whether the result must be reduced to strings.
 function lake.deps_arg(deps,base,returns_strings)
 
 -- like `deps_arg` but will expand a wildcard expression into a list of files.
@@ -282,8 +284,8 @@ function lake.install_plugin (parm)
 function lake.chdir (path)
 
 --- set the number of threads to use when building.
--- Equivalent to '-j' command-line flag. You will need either winapi
--- or luaposix for this functionality.
+-- Equivalent to '-j' command-line flag - note the flag overrides this function.
+-- You will need either winapi or luaposix for this functionality.
 function lake.concurrent_jobs (nj)
 
 --- `hook` will be called when Lake finalizes.
