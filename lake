@@ -61,6 +61,7 @@ local Windows = DIRSEP == '\\'
 
 ---some useful library functions for manipulating file paths, lists, etc.
 -- search for '--end_of_libs' to skip to the Meat of the Matter!
+-- See lakelibs.luadoc for documentation
 
 function warning(reason,...)
     reason = reason or '?'
@@ -168,7 +169,7 @@ end
 
 function file.temp_copy (s,ext)
     local res = file.temp()
-    if ext then res = res .. ext end
+    if ext then res = res .. ext end    
     local ok,err = file.write(res,s)
     if not ok then return nil,err end
     return res
@@ -249,7 +250,6 @@ function path.isfile(path)
 end
 local isfile = path.isfile
 
--- is this an absolute @path?
 function path.isabs(path)
     if Windows then return path:find '^"*%a:' ~= nil
     else return path:find '^/' ~= nil
@@ -356,8 +356,6 @@ function path.splitpath(path)
 end
 splitpath = path.splitpath
 
--- given a path @path, return the root part and the extension part
--- if there's no extension part, the second value will be empty
 function path.splitext(path)
     local i = #path
     local ch = at(path,i)
@@ -376,8 +374,6 @@ function path.splitext(path)
 end
 local splitext = path.splitext
 
--- return the directory part of @P.
--- If strict and the path is already a directory, return that
 function path.dirname(P,strict)
     if isdir(P) then return P end
     local p1,p2 = splitpath(P)
@@ -385,7 +381,6 @@ function path.dirname(P,strict)
 end
 local dirname = path.dirname
 
--- return the file part of @path
 function path.basename(path)
     local p1,p2 = splitpath(path)
     return p2
@@ -418,8 +413,6 @@ function path.replace_extension (path,ext)
 end
 local replace_extension = path.replace_extension
 
--- return the path resulting from combining the path;
--- if the second is already an absolute path, then it returns it
 function path.join(p1,p2,...)
     if select('#',...) > 0 then
         local p = path.join(p1,p2)
@@ -440,9 +433,8 @@ join = path.join
 
 local _mkdir
 
-function _mkdir(p)
-    -- windows root drive case
-    if p:find '^%a:/*$' then
+function _mkdir(p)    
+    if p:find '^%a:/*$' then -- windows root drive case
         return true
     end
     if not path.isdir(p) then
@@ -473,7 +465,6 @@ local function canonical_paths (deps)
     end end
     return deps
 end
-
 
 utils = {}
 
@@ -523,11 +514,6 @@ function utils.execute (cmd,quiet)
     end
 end
 
-
--- this expands any $(VAR) occurances in @s (where VAR is a global varialable).
--- If VAR is not present, then the expansion is just the empty string, unless
--- it is on the @exclude list, where it remains unchanged, ready for further
--- expansion at a later stage.
 function utils.subst(str,exclude,T)
     local count
     T = T or _G
@@ -550,9 +536,6 @@ local subst = utils.subst
 
 function utils.substitute (str,T) return subst(str,nil,T) end
 
--- this executes a shell command @cmd, which may contain % string.format specifiers,
--- in which case any extra arguments are used. It may contain ${VAR} which will
--- be substituted
 function utils.shell_nl(cmd,...)
     cmd = subst(cmd):format(...)
     local inf = io.popen(cmd..' 2>&1','r')
@@ -567,9 +550,6 @@ function utils.shell(cmd,...)
     return (utils.shell_nl(cmd,...):gsub('\n$',''))
 end
 local shell = utils.shell
-
--- splits a list separated by ' ' or ','. Note that some hackery is needed
--- to preserve double quoted items.
 
 local marker = string.char(4)
 local function hide_spaces(q) return q:gsub(' ',marker) end
@@ -597,7 +577,7 @@ function utils.split_list(s)
     end
     for i = 1,#ls do
         if ls[i]:find(marker) then
-            ls[i] = ls[i]:gsub(marker,' ') --:gsub('"','')
+            ls[i] = ls[i]:gsub(marker,' ') 
         end
     end
     return ls
@@ -613,7 +593,6 @@ function utils.forall(ls,action)
 end
 local forall = utils.forall
 
--- useful global function which deletes a list of files @items
 function utils.remove(items)
     if type(items) == 'string' then
         items = split_list(items)
@@ -648,7 +627,6 @@ end
 function utils.quote(fun)
     return function(...) return fun(...) end
 end
-
 
 function utils.which (prog)
     if isabs(prog) then return prog end
@@ -770,9 +748,6 @@ function list.find(ls,field,value)
 end
 find_list = list.find
 
--- used to iterate over a list, which may be given as a string:
---  for val in list(ls) do ... end
---  for val in list 'one two three' do .. end
 function list_(ls)
     if type(ls) == 'string' then
         ls = split_list(ls)
@@ -786,10 +761,7 @@ function list_(ls)
     end
 end
 
-
 utils.make_callable(list,list_)
-
-
 
 function list.column(ls,f)
     local res = {}
@@ -979,7 +951,6 @@ local function concat_if_table(t,field)
     end
 end
 
-
 local interpreters = {
     ['.lua'] = 'lua', ['.py'] = 'python',
 }
@@ -1158,7 +1129,6 @@ local function remove_quotes (ls)
     end
     return ls
 end
-
 
 local function new_target(tname,deps,cmd,upfront)
     local t = setmetatable({},tmt)
@@ -1475,7 +1445,6 @@ local function relative_to (rpath,bpath)
     return rpath
 end
 
-
 local function fire(t)
     if not t.fake then
         -- @doc compilers often support the compiling of multiple files at once, which
@@ -1576,9 +1545,8 @@ function check(time,t)
         fire(t)
         return
     end
-
+    
     if t.checked then return end
-
     if verbose then log('target: '..t.target) end
 
     if t.deps then
@@ -1687,8 +1655,7 @@ end
 
 local getter
 
-local canonical_lake_files = 'http://stevedonovan.github.com/files/'
-canonical_lake_files = 'http://localhost:8080/lake/'
+local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/files/'
 
 function lake.download (url,pathname)
     if not getter then
@@ -1826,16 +1793,15 @@ local function set_platform()
         PLAT = BUILD_PLAT
     end
     WINDOWS = PLAT=='Windows'
-    print(BUILD_PLAT,PLAT,WINDOWS)
+    --print(BUILD_PLAT,PLAT,WINDOWS)
     if WINDOWS then
-        LOCAL_EXEC = ''
         EXE_EXT = '.exe'
         DLL_EXT = '.dll'
     else
-        LOCAL_EXEC = './'
         EXE_EXT = ''
         DLL_EXT = '.so'
     end 
+    LOCAL_EXEC = choose (Windows,'','./')
 end
 
 local function process_args()
@@ -1873,7 +1839,7 @@ local function process_args()
             process_var_pair(pair)
         end
     end
-    local no_synth_target
+    local no_synth_target, run_file, run_rule
     local use_lakefile = true
     local i = 1
     while i <= #arg do
@@ -1923,39 +1889,20 @@ local function process_args()
         else
             if lake.is_remote(a) then a = lake.download(a) or '?' end
             if not no_synth_target and a:find('%.') and exists(a) then
-                -- @doc 'synth-target' unless specifically switched off with '-t',
-                -- Lua scripts are run in the context of Lake
-                if extension_of(a) == '.lua' then
-                    local new_arg = {}
-                    for k = i+1,#arg do
-                        append(new_arg,arg[k])
-                    end
-                    new_arg[0] = a
-                    new_arg[-1] = arg[-1]
-                    arg = new_arg
-                    dofile(a)
-                    os.exit(0)
-                end
-                -- otherwise, see if we have a suitable rule for processing
-                -- an existing file with this extension.
-                local _,_,rule = lake.deduce_tool(a,true)
-                if _ then
-                    lake.set_flags()
-                    use_lakefile = false
-                    -- if there's no specific rule for this tool, we assume that there's
-                    -- a program target for this file; we keep the target for later,
-                    -- when we will try to execute its result.
-                    if not rule then
-                        synth_target = lake.program (a)
-                        synth_args_index = i + 1
-                    else
-                        rule.in_ext = extension_of(a)
-                        rule(a)
-                    end
+                -- Lua scripts are run directly, unless specifically switched off with '-n'
+                if extension_of(a) == '.lua' then                 
+                    run_file = a
                     break
+                else  --  see if we have a suitable rule for processing  a file with this extension.                
+                    local _,_,rule = lake.deduce_tool(a,true)
+                    if _ then
+                        run_rule = rule or false
+                        run_file = a
+                        break
+                    end
                 end
-                -- otherwise, it has to be a target
             end
+            -- otherwise, it has to be a target
             append(specific_targets,a)
         end
         i = i + 1
@@ -1965,6 +1912,31 @@ local function process_args()
         safe_dofile (LAKE_CONFIG_FILE)
     end
     lake.set_flags()
+    if run_file or run_rule then
+        if run_file and run_rule == nil then
+            local new_arg = {}
+            for k = i+1,#arg do
+                append(new_arg,arg[k])
+            end
+            new_arg[0] = run_file
+            new_arg[-1] = arg[-1]
+            arg = new_arg
+            dofile(run_file)
+            os.exit(0)
+        end
+        --- otherwise run_rule
+       use_lakefile = false
+       -- if there's no specific rule for this tool, we assume that there's
+       -- a program target for this file; we keep the target for later,
+       -- when we will try to execute its result.
+         if not run_rule then
+            synth_target = lake.program (run_file)
+            synth_args_index = i + 1
+        else
+            run_rule.in_ext = extension_of(run_file)
+            run_rule(a)
+        end        
+    end
     -- if we are called as a program, not as a library, then invoke the specified lakefile
     if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]f?lake%.exe$' then
         if use_lakefile then
@@ -2020,7 +1992,6 @@ function finalize(reason)
         pcall(h,reason)
     end
 end
-
 
 -- recursively invoke lake at the given @path with the arguments @args
 function lake_(path,args)
@@ -2163,20 +2134,23 @@ local known_globals = {
     CC=true, -- the C compiler (gcc unless cl is available)
     CXX=true, -- the C++ compiler (g++ unless cl is available)
     FC=true, -- the Fortran compiler (gfortran)
-    OPTIMIZE=true, -- (O1)
+    OPTIMIZE=true, -- (O2)
     STRICT=true, -- strict compile (also -s command-line flag)
     DEBUG=true, -- debug build (also -g command-line flag)
-    PREFIX=true, -- (empty string. e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc)
+    PREFIX=true, -- (empty string). e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc
     LUA_INCLUDE_DIR=true,
     LUA_LIB_DIR=true, -- (usually deduced from environment)
-    WINDOWS=true, -- true for Windows
-    PLAT=true, -- platform deduced from uname if not windows, 'Windows' otherwise
-    MSVC=true, -- true if we're using cl
+    WINDOWS=true, -- true for Windows builds
+    BUILD_PLAT=true, -- build platform deduced from uname if not windows, 'Windows' otherwise
+    PLAT=true, -- actual target platform, usually the same as BUILD_PLAT
+    MSVC=true, -- true if we're using cl.exe
     EXE_EXT=true, --  extension of programs on this platform
     DLL_EXT=true, -- extension of shared libraries on this platform
+    LOCAL_EXEC=true, -- how to execute local programs (is ./ on Unix)
     DIRSEP=true, -- directory separator on this platform
     COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
     NODEPS=true, -- don't do automatic dependency generation
+    REMOTE_LAKE_URL=true --(http://stevedonovan.github.com/files) Default download location for 'get:'
 }
 
 function lake.set_flags(parms)
@@ -2209,9 +2183,9 @@ function lake.set_flags(parms)
         CXX = 'g++'
         FC = 'gfortran'
     end
-    -- @doc The default value of OPTIMIZE is O1
+    -- @doc The default value of OPTIMIZE is O2
     if not OPTIMIZE then
-        OPTIMIZE = 'O1'
+        OPTIMIZE = 'O2'
     end
     if CC ~= 'cl' then -- must be 'gcc' or something compatible
         c.init_flags = function(debug,opt,strict)
@@ -2911,7 +2885,7 @@ end
 
 local function _program(ptype,name,deps,lang)
     local dependencies,src,except,cr,args
-    local libs = LIBS
+    local libs = ''
     if type(name) == 'string' then name = { name } end
     if type(name) == 'table' then
         args = name
