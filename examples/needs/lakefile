@@ -1,8 +1,20 @@
 
 lake('foo',arg[1])
 
+-- if you want to install a need globally, then you have to encode the full
+-- path in the needs file using the global PWD
+local foospec =  [==[
+--- variables for package foo
+FOO = [[$(PWD)foo]]
+FOO_INCLUDE_DIR = FOO
+FOO_LIB_DIR = FOO
+FOO_LIBS = 'foo'
+----
+]==]
+
 if arg[1] ~= 'clean' then
-    lake('.','-install foo.need')
+    file.write('foo.need.lua',utils.subst(foospec))
+    lake.install_plugin 'foo.need'
 end
 
 c.program{'needs-foo',needs='foo-static'}
