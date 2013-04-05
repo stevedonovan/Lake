@@ -58,6 +58,7 @@ TESTING = false
 
 DIRSEP = package.config:sub(1,1)
 local Windows = DIRSEP == '\\'
+WINDOWS = Windows -- we'll review this later
 
 ---some useful library functions for manipulating file paths, lists, etc.
 -- search for '--end_of_libs' to skip to the Meat of the Matter!
@@ -169,7 +170,7 @@ end
 
 function file.temp_copy (s,ext)
     local res = file.temp()
-    if ext then res = res .. ext end    
+    if ext then res = res .. ext end
     local ok,err = file.write(res,s)
     if not ok then return nil,err end
     return res
@@ -236,7 +237,7 @@ function path.exists(path,fname)
         return fname
     end
 end
-local exists = path.exists
+exists = path.exists
 file.exists = exists
 
 function path.isdir(path)
@@ -433,7 +434,7 @@ join = path.join
 
 local _mkdir
 
-function _mkdir(p)    
+function _mkdir(p)
     if p:find '^%a:/*$' then -- windows root drive case
         return true
     end
@@ -577,7 +578,7 @@ function utils.split_list(s)
     end
     for i = 1,#ls do
         if ls[i]:find(marker) then
-            ls[i] = ls[i]:gsub(marker,' ') 
+            ls[i] = ls[i]:gsub(marker,' ')
         end
     end
     return ls
@@ -1545,7 +1546,7 @@ function check(time,t)
         fire(t)
         return
     end
-    
+
     if t.checked then return end
     if verbose then log('target: '..t.target) end
 
@@ -1800,7 +1801,7 @@ local function set_platform()
     else
         EXE_EXT = ''
         DLL_EXT = '.so'
-    end 
+    end
     LOCAL_EXEC = choose (Windows,'','./')
 end
 
@@ -1826,11 +1827,11 @@ local function process_args()
     end
     if not Windows then
         BUILD_PLAT = shell('uname -s')
-    else 
+    else
         BUILD_PLAT='Windows'
-    end    
+    end
     update_pwd()
-    
+
     -- @doc [config] the environment variable LAKE_PARMS can be used to supply default global values,
     -- in the same <var>=<value> form as on the command-line; pairs are separated by semicolons.
     local parms = env 'LAKE_PARMS'
@@ -1890,10 +1891,10 @@ local function process_args()
             if lake.is_remote(a) then a = lake.download(a) or '?' end
             if not no_synth_target and a:find('%.') and exists(a) then
                 -- Lua scripts are run directly, unless specifically switched off with '-n'
-                if extension_of(a) == '.lua' then                 
+                if extension_of(a) == '.lua' then
                     run_file = a
                     break
-                else  --  see if we have a suitable rule for processing  a file with this extension.                
+                else  --  see if we have a suitable rule for processing  a file with this extension.
                     local _,_,rule = lake.deduce_tool(a,true)
                     if _ then
                         run_rule = rule or false
@@ -1907,7 +1908,7 @@ local function process_args()
         end
         i = i + 1
      end
-    set_platform()   
+    set_platform()
     if LAKE_CONFIG_FILE then
         safe_dofile (LAKE_CONFIG_FILE)
     end
@@ -1935,7 +1936,7 @@ local function process_args()
         else
             run_rule.in_ext = extension_of(run_file)
             run_rule(a)
-        end        
+        end
     end
     -- if we are called as a program, not as a library, then invoke the specified lakefile
     if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]f?lake%.exe$' then
@@ -2141,6 +2142,7 @@ local known_globals = {
     LUA_INCLUDE_DIR=true,
     LUA_LIB_DIR=true, -- (usually deduced from environment)
     WINDOWS=true, -- true for Windows builds
+    PWD=true, -- current working directory
     BUILD_PLAT=true, -- build platform deduced from uname if not windows, 'Windows' otherwise
     PLAT=true, -- actual target platform, usually the same as BUILD_PLAT
     MSVC=true, -- true if we're using cl.exe
@@ -2170,7 +2172,9 @@ function lake.set_flags(parms)
         -- @doc if PREFIX is set, then we use PREFIX-gcc etc. For example,
         -- if PREFIX='arm-linux' then CC becomes 'arm-linux-gcc'
         if PREFIX and #PREFIX > 0 then
-            PREFIX = PREFIX..'-'
+            if not PREFIX:match '%-$' then
+                PREFIX = PREFIX..'-'
+            end
             CC = PREFIX..'gcc'
             CXX = PREFIX..'g++'
             FC = PREFIX..'gfortran'
@@ -2183,7 +2187,6 @@ function lake.set_flags(parms)
         CXX = 'g++'
         FC = 'gfortran'
     end
-    -- @doc The default value of OPTIMIZE is O2
     if not OPTIMIZE then
         OPTIMIZE = 'O2'
     end
