@@ -2,318 +2,321 @@
 -- global functions available with Lake.
 
 --- write out a warning message, where `reason` is a `string.format` string.
-function warning(reason,...)
+function warning(reason,...)  end
 
 --- put out a warning and quit the script immediately, after finalization.
-function quit(reason,...)
+function quit(reason,...) end
 
 --- return either `v1` or `v2` depending on `cond`.
 -- alias `IF`
-function choose(cond,v1,v2)
+function choose(cond,v1,v2) end
 
 --- return `a` if it isn't `nil`, otherwise `b`
 function pick(a,b)
 
 --- for debug purposes: dump out a table with optional message
-function dump(t,msg)
+function dump(t,msg) end
 
 --- create a target with dependencies and an action
 -- `deps` is a list as defined by `lake.deps_args`, and `cmd`
 -- may be a string (a command to be executed) or a Lua function.
-function target(name,deps,cmd,upfront)
+function target(name,deps,cmd,upfront) end
 
 --- defines the default target for this lakefile.
 -- It is passed a list of targets as dependencies.
-function default(...)
+function default(...) end
 
 -- create a rule object, mapping input files with extension `in_ext` to
 -- output files with extension `out_ext`, using an action `cmd`
 -- Most of the customization of rules comes from setting a `lang` field.
-function rule(out_ext,in_ext,cmd,label)
+function rule(out_ext,in_ext,cmd,label) end
 
 ------
 -- Functions operating on files.
--- @type file
+-- @section file
 
 --- get the modification time of a file `fname`.
-function file.time(fname)
+function file.time(fname) end
 
-function file.generate_target(r,tname,root)
+function file.generate_target(r,tname,root) end
 
 --- copy `src` to `dest`, creating destination path if needed.
-function file.copy(src,dest)
+function file.copy(src,dest) end
 
 --- write `text` to a file `name`
-function file.write (name,text)
+function file.write (name,text) end
 
 --- read contents of `name`
-function file.read (name)
+function file.read (name) end
 
 --- update the timestamp of `name` - create if necessary.
-function file.touch(name)
+function file.touch(name) end
 
 --- create a new temporary file
-function file.temp ()
+function file.temp () end
 
 --- write `s` to a temporary file, returning the filename.
 -- Will apply the extension `ext` to the file if supplied.
-function file.temp_copy (s,ext)
+function file.temp_copy (s,ext) end
 
 
-function file.find(...)
+function file.find(...) end
 
 ----
 -- Path manipulation functions
--- @type path
+-- @section path
 
 --- is `P` a directory?
-function path.isdir(P)
+function path.isdir(P) end
 
 --- is `P` a file?
-function path.isfile(P)
+function path.isfile(P) end
 
 
 --- is `P` an absolute path?
-function path.isabs(P)
+function path.isabs(P) end
 
 --- make an absolute path
-function path.abs(...)
+function path.abs(...) end
 
 --- update an input table `files` with all files from `dir` that match `pat`.
 -- Here `pat` is a Lua string pattern, and `recurse` means follow directories.
-function path.get_files (files,dir,pat,recurse)
+function path.get_files (files,dir,pat,recurse) end
 
 --- is `pat` a file mask?
 -- Note: only '*' is understood!
-function path.is_mask (pat)
+function path.is_mask (pat) end
 
 --- given a file mask, grab all the matching files.
 -- `mask` may contain a directory part, and `recurse` means follow directories.
-function path.files_from_mask (mask,recurse)
+function path.files_from_mask (mask,recurse) end
 
 --- get all the directories in `dir`
-function path.get_directories (dir)
+function path.get_directories (dir) end
 
 --- iterator over `path.files_from_mask`
-function path.mask(mask)
+function path.mask(mask) end
 
 --- iterator over `path.get_directories`
-function path.dirs(dir)
+function path.dirs(dir) end
 
 --- given `path`, return the directory part and a file part.
 -- if there's no directory part, the first value will be empty
-function path.splitpath(path)
+function path.splitpath(path) end
 
 --- given `path`, return the root part and the extension part
 -- if there's no extension part, the second value will be empty
-function path.splitext(path)
+function path.splitext(path) end
 
--- return the directory part of `P`.
+--- return the directory part of `P`.
 -- If `strict` and the path is already a directory, return that
-function path.dirname(P,strict)
+function path.dirname(P,strict) end
 
 --- return the file part of `path`
-function path.basename(path)
+function path.basename(path) end
 
 --- return the extension of `path`
-function path.extension_of(path)
+function path.extension_of(path) end
 
 --- expand initial '~' to user's home path
-function path.expanduser(path)
+function path.expanduser(path) end
 
 --- given a file, replace its extension with `ext`
-function path.replace_extension (path,ext)
+function path.replace_extension (path,ext) end
 
 -- the result of combining the paths;
 -- if the second is already an absolute path, then it returns it
-function path.join(p1,p2,...)
+function path.join(p1,p2,...) end
 
 --- make a directory, making any subdirs as necessary.
-function path.mkdir (p)
+function path.mkdir (p) end
 
 -----
--- General Utilities
--- @type utils
+-- General Utilities.
+-- @section utils
 
----- start a millsecond timer with a message.
-function utils.start_timer (msg)
+--- start a millsecond timer with a message.
+function utils.start_timer (msg) end
 
 --- finish a millisecond timer, showing the message.
-function utils.end_timer ()
+function utils.end_timer () end
 
 --- split a list using a delimiter (default spaces).
-function utils.split(s,re)
+function utils.split(s,re) end
 
 --- split a string into two parts with a delimiter.
-function utils.split2(s,delim)
+function utils.split2(s,delim) end
 
 --- split a string with items separated by commas or spaces.
 -- This honours \ escapes on Unix and double-quotes on Windows.
-function utils.split_list(s)
+function utils.split_list(s) end
 
 --- compatible wrapper over `os.execute`.
 -- `quiet` prevents any console output.
-function utils.execute (cmd,quiet)
+function utils.execute (cmd,quiet) end
 
 --- this expands any $(VAR) occurances in `s` (where VAR is a global varialable).
 -- If VAR is not present, then the expansion is just the empty string, unless
 -- it is on the `exclude` list, where it remains unchanged, ready for further
 -- expansion at a later stage.
-function utils.subst(str,exclude,T)
+function utils.subst(str,exclude,T) end
 
 --- like `utils.subst`, but no exclude list.
-function utils.substitute (str,T)
+function utils.substitute (str,T) end
 
 --- this executes a shell command `cmd`, which may contain % string.format specifiers,
 -- in which case any extra arguments are used. It may contain ${VAR} which will
 -- be substituted
-function utils.shell_nl(cmd,...)
+function utils.shell_nl(cmd,...) end
 
 --- a convenient function which gets rid of the trailing line-feed from `utils.shell_nl`.
-function utils.shell(cmd,...)
+function utils.shell(cmd,...) end
 
 --- calls `action` on all elements of `ls`.
 -- `ls` is expanded using `lake.expand_args`
-function utils.forall(ls,action)
+function utils.forall(ls,action) end
 
 --- delete a list of files.
-function utils.remove(items)
+function utils.remove(items) end
 
 --- uses system file remove command on a file mask.
-function utils.remove_files (mask)
+function utils.remove_files (mask) end
 
 --- make a table callable with a supplied function.
-function utils.make_callable (obj,fun)
+function utils.make_callable (obj,fun) end
 
-function utils.quote(fun)
+function utils.quote(fun) end
 
 --- return full path of program on path if it exists.
-function utils.which (prog)
+function utils.which (prog) end
 
 -----
--- @type list
+-- List manipulation functions
+-- @section list
 
 --- append elements of `l2` to 'l1`.
-function list.extend(l1,l2)
+function list.extend(l1,l2) end
 
 --- append elements of `l2` to 'l1` uniquely.
-function list.extend_unique(l1,l2)
+function list.extend_unique(l1,l2) end
 
 --- only append if `v` is not already in `l`
-function list.append_unique(l,v)
+function list.append_unique(l,v) end
 
 --- shallow copy.
-function list.copy (l1)
+function list.copy (l1) end
 
 --- erase elements of `l1` equal to any of `l2`
-function list.erase(l1,l2)
+function list.erase(l1,l2) end
 
 
-function list.concat(pre,ls,sep)
+function list.concat(pre,ls,sep) end
 
-function list.index(ls,val)
+--- return the index of `val` in the list.
+function list.index(ls,val) end
 
-function list.find(ls,field,value)
+--- find an element where the `field` is `value`.
+function list.find(ls,field,value) end
 
 --- used to iterate over a list, which may be given as a string.
 --
 --    for val in list(ls) do ... end
 --    for val in list 'one two three' do .. end
 --
-function list_(ls)
+function list(ls) end
 
 --- extract a column from a list of tables using an index `f`.
-function list.column(ls,f)
+function list.column(ls,f) end
 
 --- build a quoted string suitable for a shell command.
 -- Can start at the indicated index `istart`.
-function list.parm_concat(ls,istart)
+function list.parm_concat(ls,istart) end
 
 ------
 -- Access to internal Lake functionality.
--- @type lake
+-- @section lake
 
 --- create a new 'language'.
 -- `bl` is an optional base language, and `t` is an optional initial value for the language.
 --
 --    c = lake.new_lang(nil,{ext='.c'})
 --
-function lake.new_lang(bl,t)
+function lake.new_lang(bl,t) end
 
 --- register a new language.
 -- `extra` may be a list of extra extensions.
-function lake.register(lang,extra)
+function lake.register(lang,extra) end
 
 --- any string separated with ' ' or ',' will be converted into an appropriate list.
 -- This function is guaranteed to return a plain list, and will wrap other objects like
 -- targets and rules appropriately. Strings, targets, rules and target lists are
 -- allowed. `returns_strings` determines whether the result must be reduced to strings.
-function lake.deps_arg(deps,base,returns_strings)
+function lake.deps_arg(deps,base,returns_strings) end
 
--- like `deps_arg` but will expand a wildcard expression into a list of files.
+--- like `deps_arg` but will expand a wildcard expression into a list of files.
 -- Also expands lists as strings. If the argument is a table, it will attempt
 -- to expand each string - e.g. `{'a','b c'} => {'a','b','c'}`
-function lake.expand_args(src,ext,recurse,base)
+function lake.expand_args(src,ext,recurse,base) end
 
 --- a phony target with dependecies `deps` and command `cmd`.
-function lake.phony(deps,cmd)
+function lake.phony(deps,cmd) end
 
--- @doc returns a copy of all the targets. The variable ALL_TARGETS is
+--- a copy of all the targets. The variable `ALL_TARGETS` is
 -- predefined with a copy
-function lake.all_targets()
+function lake.all_targets() end
 
 --- is a file remote?
 -- Currently, only if it starts with 'get:' or 'http:'
-function lake.is_remote (file)
+function lake.is_remote (file) end
 
 --- download `url` into an optional local `pathname`.
 -- If `pathname` isn't present, use the basename of `url`.
 -- Currrently only understands `get:` or `http:` and requires
 -- either `wget` or `curl` to be installed.
-function lake.download (url,pathname)
+function lake.download (url,pathname) end
 
 --- Install a need, language or general plugin. A file defining a need, like 'foo.need.lua'
 -- or one defining a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
 -- Language plugins are thereafter automatically required in `config.lua`.
 -- The '.lua' extension is not necessary and the file may be remote (`lake.is_remote`)
-function lake.install_plugin (parm)
+function lake.install_plugin (parm) end
 
 --- change Lake directory to `path`.
 -- `path` may be '!' or '<' to pop the directory stack like 'popd'
 -- Outputs to log.
-function lake.chdir (path)
+function lake.chdir (path) end
 
 --- set the number of threads to use when building.
 -- Equivalent to '-j' command-line flag - note the flag overrides this function.
 -- You will need either winapi or luaposix for this functionality.
-function lake.concurrent_jobs (nj)
+function lake.concurrent_jobs (nj) end
 
 --- `hook` will be called when Lake finalizes.
 -- This will happen if you use `quit` as well.
-function lake.on_exit (hook)
+function lake.on_exit (hook) end
 
 --- start evaluating dependencies.
 -- This is implicitly called after loading a lakefile.
-function lake.go()
+function lake.go() end
 
 --- run a program or a target, given some arguments. It will
 -- only include arguments starting at `istart`, if defined. If it is a target,
 -- the target's language may define a runner; otherwise we look for an interpreter
 -- or default to local execution of the program.
-function lake.run(prog,args,istart)
+function lake.run(prog,args,istart) end
 
 --- set global flags _properly_.
 -- `parms` is a table of key-value pairs which will be put into `_G`, and
 -- then any depenedent flags will be generated. For instance, setting `PREFIX`
 -- will cause the C compiler to become `PREFIX..'gcc'`.
-function lake.set_flags(parms)
+function lake.set_flags(parms) end
 
 --- set a compiler output filter for a given `lang`.
 -- This is initially called with args `({target,input,rule},'start')` and thereafter
 -- is passed each line of output; if it returns a line, output that. Finally it is
 -- called with args `(base,'end')`. Setting `lang.filter` directly is not a good
 -- idea, because the filter may be chained.
-function lake.output_filter (lang,filter)
+function lake.output_filter (lang,filter) end
 
 --- provide a definition for a need.
 -- This is a callback which must return a table containing any or all of:
@@ -326,34 +329,37 @@ function lake.output_filter (lang,filter)
 -- it will be passed the name of the need, the arguments to `program`, and whether we
 -- want to link against the need statically
 --
-function lake.define_need (name,callback)
+function lake.define_need (name,callback) end
 
 --- specify a need to be satisfied with `pkg-config`.
 -- if an alias `name` for `package` is provided,
 -- then this package is available using the alias (e.g. 'gtk') and _must_ be handled by
 -- pkg-config.
-function lake.define_pkg_need (name,package)
+function lake.define_pkg_need (name,package) end
 
 --- append the list `value` to `t[name]`.
 -- If `t[name]` does not exist, make it a table first; if `value` is a string,
 -- then make it into a list.
-function lake.append_to_field (t,name,value)
+function lake.append_to_field (t,name,value) end
 
 --- add new program options.
 -- (`program` always checks its arguments, so this is needed to keep the check happy.)
-function lake.add_program_option(options)
+function lake.add_program_option(options) end
 
 --- create lang.program
-function lake.add_prog (lang)
+function lake.add_prog (lang) end
 
 --- create lang.shared
-function lake.add_shared (lang)
+function lake.add_shared (lang) end
 
 --- create lang.lib
-function lake.add_library (lang)
+function lake.add_library (lang) end
 
 --- create lang.group
-function lake.add_group (lang)
+function lake.add_group (lang) end
 
-function lake.compiler_version (cc)
+--- version of current compiler.
+-- returns a table with fields `MAJOR', 'MINOR' and 'REV'.
+-- If `cc` is not specified, use the global `CC`.
+function lake.compiler_version (cc) end
 
