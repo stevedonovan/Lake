@@ -377,7 +377,7 @@ There is an important difference between an ordinary global like `COPY` and basi
 `INPUT,TARGET,DEPENDS,LIBS,CFLAGS`.
 
 Another example is converting image files using [ImageMagick](http://www.imagemagick.org/), which
-provides `convert`, the Swiss Army Knife of file converters.
+provides `convert`, the Swiss Army Knife of image file converters.
 
     to_png = rule('.png','.jpg',
       'convert $(INPUT) $(TARGET)'

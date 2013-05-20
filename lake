@@ -45,7 +45,7 @@ local nbuild = 0
 local all_targets_list = {}
 local attributes = lfs.attributes
 local env = os.getenv
-local unpack = unpack or table.unpack
+local unpack = unpack
 local log = print
 
 local TMPSPEC = '_t_.spec'
@@ -1136,6 +1136,8 @@ local function new_target(tname,deps,cmd,upfront)
     if tname == '*' then
         tname = '*'..tcnt
         tcnt = tcnt + 1
+    elseif not tname then
+        quit("target is nil!")
     end
     t.target = canonical_path(tname)
     t.deps = remove_quotes(deps_arg(deps))
@@ -1711,6 +1713,9 @@ function lake.install_plugin (parm)
         sub = '/lake/'
     end
     local dest = lake.home..sub..package..'.lua'
+    -- convention is that plugins use quit() if they cannot load...
+    dofile (fname)
+    -- so if we get here we're ready to roll
     log ('copying '..fname..' to '..dest)
     file.copy(fname, dest)
     if kind == 'lang' then
@@ -1935,7 +1940,7 @@ local function process_args()
             synth_args_index = i + 1
         else
             run_rule.in_ext = extension_of(run_file)
-            run_rule(a)
+            run_rule(run_file)
         end
     end
     -- if we are called as a program, not as a library, then invoke the specified lakefile
@@ -2284,7 +2289,7 @@ function lake.set_flags(parms)
         -- @doc under Windows, we use the .def file if provided when linking a DLL
         function c.massage_link (name,deps,t)
             if t.ptype ~= 'dll' then return deps end
-            local def = exists(name..'.def')
+            local def = exists(name..'.def') or t.args.def
             if def and PLAT=='Windows' then
                 deps = copy_list(deps)
                 append(deps,def)
@@ -2347,7 +2352,7 @@ function lake.set_flags(parms)
             if t.ptype == 'dll' then
                 -- @doc [link:win] if there was an explicit .def file, use it; it will be relative to any base
                 local bname = t.basedir and path.join(t.basedir,name) or name
-                local def = exists(bname..'.def')
+                local def = exists(bname..'.def') or t.args.def
                 if def then
                     append(deps,'/DEF:'..def)
                 elseif t.lua or t.llua ~= nil then
@@ -2738,7 +2743,12 @@ define_need('unicode',function()
 end)
 
 
-local lr_cfg
+local function check_luarocks_variables ()
+    if IGNORE_LUAROCKS then return false end
+    local ok,lr_cfg = pcall(require,'luarocks.cfg')
+    if not ok then return false end
+    return lr_cfg.variables
+end
 
 -- the assumption here that the second item on your Lua paths is the 'canonical' location. Adjust accordingly!
 function get_lua_path (p)
@@ -2760,12 +2770,12 @@ function update_lua_flags (args,static)
     using_LfW = env 'LUA_DEV'
     if LUA_INCLUDE_DIR == nil then
         -- if LuaRocks is available, we ask it where the Lua headers are found...
-        if not IGNORE_LUAROCKS and not lr_cfg and pcall(require,'luarocks.cfg') then
-            lr_cfg = luarocks.cfg
-            LUA_INCLUDE_DIR = lr_cfg.variables.LUA_INCDIR
-            LUA_LIB_DIR = lr_cfg.variables.LUA_LIBDIR
+        local lr_vars = check_luarocks_variables()
+        if lr_vars then
+            LUA_INCLUDE_DIR = lr_vars.LUA_INCDIR
+            LUA_LIB_DIR = lr_vars.LUA_LIBDIR
             if Windows then
-                LUA_DLL = find_lua_dll(lr_cfg.variables.LUAROCKS_PREFIX..'/2.0')
+                LUA_DLL = find_lua_dll(lr_vars.LUAROCKS_PREFIX..'/2.0')
             end
         elseif Windows then -- no standard place, have to deduce this ourselves!
             local lua_path = utils.which(LUA_EXE)  -- usually lua, could be lua51, etc!
@@ -2831,6 +2841,7 @@ local program_fields = {
     libs=true, -- list of libraries
     libflags=true, -- list of flags for linking
     subsystem=true, -- (Windows) GUI application
+    def=true, -- (Windows) explicit .def file
     strip=true,  -- strip symbols from output
     rules=true,inputs=true, -- explicit set of compile targets
     shared=true,dll=true, -- a DLL or .so (with lang.library)
@@ -2941,7 +2952,7 @@ local function _program(ptype,name,deps,lang)
             end
         end
         if args.libdir then
-            libs = libs..concat_arg(c.LIBDIR,args.libdir,' ')
+            libs = libs..concat_arg(baselang.LIBDIR,args.libdir,' ')
         end
         -- @lang an opportunity for this anguage to modify the lib flags
         if lang.flags_handler then
@@ -3019,6 +3030,9 @@ local function _program(ptype,name,deps,lang)
         else
             args.odir = args.base
         end
+    end
+    if args.def and WINDOWS then
+        args.def = join(args.base,args.def)
     end
     -- @compile by default, setting base also sets the output directory,
     -- if not specified (args.odir = false will suppress this)
@@ -3126,6 +3140,7 @@ local function _program(ptype,name,deps,lang)
         t.debug = args.debug
         t.ptype = ptype
         t.basedir = args.base
+        t.args = args
         if args.cdir then
             t.dir = args.cdir
             t.cdir = args.cdir
