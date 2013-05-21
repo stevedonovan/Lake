@@ -523,6 +523,40 @@ An interesting aspect of this style of programming is that the order of the depe
 fairly arbitrary (except that the sub-dependencies must fire first) so that they could be done in
 parallel.
 
+As a fun exercise, consider [Moonscript](?) as a way of generating makefiles
+
+    -- alternative.moon
+    task = target
+
+    task.codeGen nil, ->
+        print 'codeGen'
+
+    task.compile 'codeGen',->
+        print 'compile'
+
+    task.dataLoad 'codeGen',->
+        print 'dataLoad'
+
+    task.test 'compile dataLoad',->
+        print 'test'
+
+    default 'test'
+
+That looks even cleaner than the original Ruby example, due to the lightweight function syntax:
+
+    $ moonc alternative.moon
+    Built   ./alternative.moon
+    $ lake -f alternative.lua
+    codeGen
+    compile
+    codeGen
+    dataLoad
+    test
+    lake: 'build' took  0.00 sec
+    lake: up to date
+
+You can name the Moonscript file `lakefile.moon`, and then the output will be `lakefile.lua` and be accepted directly by Lake.
+
 ### How Lake is Configured
 
 The command Lake will load configuration files, if it can find them. It will first try load
@@ -1477,6 +1511,35 @@ in an ideal world the order of dependencies being resolved should not matter, bu
 now.)
 
 ![mydir and test dependencies](http://github.com/stevedonovan/Lake/raw/master/doc/one.png)
+
+From 1.4, there is more direct support. Consider this lakefile, which builds a library consisting of
+one file, and compiles the single test file twice, once against the DLL and once against the static lib.
+
+
+    if PLAT ~= 'Windows' then
+        ENV.LD_LIBRARY_PATH='.'
+    end
+    dll = c.shared {'lib1'}
+    lib = c.library {'lib1'}
+
+    default {
+        c.program{'with_dll',src='needs-lib1',dll}:run(),
+        c.program{'with_lib',src='needs-lib1',lib}:run()
+    }
+
+The `run` method of a target generates another target which depends on it. The new target's action is to
+run the program, if the program has changed.
+
+    d:\test> lake
+    gcc -c -O2 -Wall -MMD  needs-lib1.c -o needs-lib1.o
+    gcc -c -O2 -Wall -MMD  lib1.c -o lib1.o
+    gcc lib1.o lib1.def  -Wl,-s -shared -o lib1.dll
+    gcc needs-lib1.o lib1.dll  -Wl,-s -o with_dll.exe
+    with_dll.exe >with_dll-output
+    ar rcu liblib1.a lib1.o && ranlib liblib1.a
+    gcc needs-lib1.o liblib1.a  -Wl,-s -o with_lib.exe
+    with_lib.exe >with_lib-output
+
 
 ### Command-line Flags
 
