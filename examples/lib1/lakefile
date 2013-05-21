@@ -1,8 +1,12 @@
+if PLAT ~= 'Windows' then
+	ENV.LD_LIBRARY_PATH='.'
+end
 dll = c.shared {'lib1'}
 lib = c.library {'lib1'}
+
 default {
-    c.program{'with_dll',src='needs-lib1',dll};
-    c.program{'with_lib',src='needs-lib1',lib}
+	c.program{'with_dll',src='needs-lib1',dll}:run(),
+	c.program{'with_lib',src='needs-lib1',lib}:run()
 }
 
 

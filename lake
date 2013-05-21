@@ -1119,6 +1119,7 @@ lake.expand_args = expand_args
 utils.foreach = utils.quote(forall)
 
 local tmt,tcnt = {},1
+tmt.__index = tmt
 
 function istarget (t)
     return type(t) == 'table' and getmetatable(t) == tmt
@@ -2725,7 +2726,7 @@ local function update_needs(ptype,args)
                     if PLAT=='Linux' then
                         append_list(libs,{'ncurses','history'})
                     end
-                elseif need == 'dl' and PLAT=='Linux' then
+                elseif need == 'dl' and ls=='Linux' then
                     append(libs,'dl')
                 end
             else
@@ -3240,8 +3241,8 @@ function default(...)
 end
 
 target = {}
-local tmt = utils.make_callable(target,new_target)
-tmt.__index = function(obj,name)
+local tmm = utils.make_callable(target,new_target)
+tmm.__index = function(obj,name)
     return function(...)
         return new_target(name,...)
     end
@@ -3259,6 +3260,16 @@ local function  action_(name,action,...)
     end
     return new_target(name,nil,function() action(unpack(args)) end)
 end
+
+function lake.run_target(t,args)
+	local name = t.name .. '-output'
+	args = args or {}
+	append(args,'>'..name)
+	return new_target(name,t,function()
+		lake.run(t,args,1)
+	end)	
+end
+tmt.run = lake.run_target
 
 local amt = utils.make_callable(action,action_)
 amt.__index = function(obj,name)
