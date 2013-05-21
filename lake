@@ -473,11 +473,11 @@ local start_t, msg_t
 
 function utils.start_timer (msg)
     msg_t = msg
-    start_t = os.clock()
+    start_t = utils.clock()
 end
 
 function utils.end_timer ()
-    warning("'%s' took %7.2f sec",msg_t,os.clock()-start_t)
+    warning("'%s' took %5.2f sec",msg_t,utils.clock()-start_t)
 end
 
 function utils.split(s,re)
@@ -789,8 +789,15 @@ end
 local job_execute, jobs_clear, found_threads, winapi, posix
 if Windows then
     found_threads, winapi = pcall(require, 'winapi')
+	utils.clock = os.clock
 else
     found_threads, posix = pcall(require, 'posix')
+	if found_threads then
+		function utils.clock()
+			local secs,nsec = posix.clock_gettime()
+			return secs + nsec/1e9
+		end
+	end
 end
 
 local function command_line (cmd)
@@ -3095,7 +3102,6 @@ local function _program(ptype,name,deps,lang)
         elseif ptype == 'dll' then
             tname = name..(lang.DLL_EXT or DLL_EXT)
             libs = libs..' '..lang.LINK_DLL
-            if C_LINK_PREFIX then link_prefix = C_LINK_PREFIX end
         elseif ptype == 'lib' then
             local dir,fname = splitpath(name)
             tname = lang.LIB_PREFIX..fname..lang.LIB_EXT
