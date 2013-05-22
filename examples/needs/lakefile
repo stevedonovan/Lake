@@ -9,8 +9,14 @@ FOO = [[$(PWD)foo]]
 FOO_INCLUDE_DIR = FOO
 FOO_LIB_DIR = FOO
 FOO_LIBS = 'foo'
+FOO_LIBS_STATIC = 'foo$(MSVC)'
 ----
 ]==]
+
+-- the Lake convention is for the static MSVC library to end with _static;
+-- the purpose of FOO_LIBS_STATIC is to allow this name to be distinct,
+-- even if does not follow this convention. 
+MSVC = choose(CC=='cl','_static','')
 
 if arg[1] ~= 'clean' then
     file.write('foo.need.lua',utils.subst(foospec))

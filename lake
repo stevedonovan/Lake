@@ -722,7 +722,7 @@ function list.erase(l1,l2)
 end
 erase_list = list.erase
 
-function list.concat(pre,ls,sep)
+function list.concat(ls,pre,sep)
     local res = ''
     for i,v in ipairs(ls) do
         if v ~= '' then
@@ -1022,7 +1022,7 @@ local extensions = {
     ['.f'] = f, ['.for'] = f, ['.f90'] = f,
 }
 
-local deps_arg, isrule, istarget
+local deps_arg, concat_arg, isrule, istarget
 
 function lake.register(lang,extra)
     extensions[lang.ext] = lang
@@ -2477,9 +2477,9 @@ function lake.output_filter (lang,filter)
 end
 
 function concat_arg(pre,arg,sep,base)
-    return ' '..concat_list(pre,deps_arg(arg,base),sep)
+    return ' '..concat_list(deps_arg(arg,base),pre,sep)
 end
-
+lake.concat_arg = concat_arg
 
 local function _compile(name,compile_deps,lang)
     local args = (type(name)=='table') and name or {}
@@ -2567,12 +2567,13 @@ local function examine_config_vars(package,subtype)
     local incdir_v = upack..'_INCLUDE_DIR'
     local libdir_v = upack..'_LIB_DIR'
     local libs_v = upack..'_LIBS'
+    local libss_v = upack..'_LIBS_STATIC'
     local dir_v = upack..'_DIR'
     local cflags_v = upack..'_CFLAGS'
     local lflags_v = upack..'_LFLAGS'
 
-    local incdir,libdir,libs,dir,cflags,lflags =
-        _G[incdir_v],_G[libdir_v],_G[libs_v],_G[dir_v],_G[cflags_v],_G[lflags_v]
+    local incdir,libdir,libs,libss,dir,cflags,lflags =
+        _G[incdir_v],_G[libdir_v],_G[libs_v],_G[libss_v],_G[dir_v],_G[cflags_v],_G[lflags_v]
 
     local function checkdir(val,var,default)
         local none = val == nil
@@ -2604,8 +2605,14 @@ local function examine_config_vars(package,subtype)
         if PLAT=='Windows' or libdir ~= nil then checkdir(libdir,libdir_v) end
         checkdir(libs,libs_v,package)
     end
-    if libs and CC == 'cl' and subtype == 'static' then
-        libs = libs..'_static'
+    -- the program wants to link statically against this need
+    if subtype == 'static' then
+        if libss then -- specifically specified!
+            libs = libss
+        -- otherwise we use lake convention for MSVC
+        elseif libs and CC == 'cl' and subtype == 'static' then
+            libs = concat_arg('',libs,'_static ')
+        end
     end
     local res = {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
     if not next(res) then -- we found nuffink...
@@ -2654,6 +2661,7 @@ local function handle_unknown_need (name,args,static)
         local ok,needs,nfun,needs_package
         local pack,sub = utils.split2(name,'%-')
         pack = pack or name
+        sub = sub or (static and 'static' or nil)
         needs_package = 'lake.needs.'..pack
 
         ok,nfun = pcall(require,needs_package)
@@ -3267,7 +3275,7 @@ function lake.run_target(t,args)
 	append(args,'>'..name)
 	return new_target(name,t,function()
 		lake.run(t,args,1)
-	end)	
+	end)
 end
 tmt.run = lake.run_target
 
