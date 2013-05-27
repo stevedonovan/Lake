@@ -1,0 +1,2 @@
+lake.set_flags { FULL_OUTPUTNAME = true }
+c.program{'main',src='foo/main boo/main',defines='DEBUG'}

@@ -1,0 +1,4 @@
+c.defaults{odir=true}
+g1 = c.group{base='foo',src='main',defines='DEBUG'}
+g2 = c.group{base='boo',src='main'}
+c.program{'main',inputs={g1,g2}}

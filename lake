@@ -1241,7 +1241,7 @@ function rt.add_target(r,tname,deps,root)
     if ext == '' then ext = in_ext end
     local input = tname..ext
 
-    -- usually file.IN goes to file.OUT, but a 'language' can ask
+    -- usually file.IN goes to file.OUT, but a language can ask
     -- for custom behaviour here.
     local new_target_name
     local target_name = tname..out_ext
@@ -1259,8 +1259,17 @@ function rt.add_target(r,tname,deps,root)
         -- this is used by compilers like javac which generate output files
         -- within the same directory as the source files
         target_name = replace_extension(input,r.out_ext)
-    elseif  r.output_dir then
-        target_name = join(r.output_dir,target_name)
+    else
+        if FULL_OUTPUTNAME then
+            local dir = path.dirname(tname)
+            if #dir > 0 then
+                dir = dir:gsub('[/\\]','__'):gsub('%.','_') .. '__'
+            end
+            target_name = dir .. target_name
+        end
+        if r.output_dir then
+            target_name = join(r.output_dir,target_name)
+        end
     end
 
     -- the files which this target is dependent on.
@@ -3037,33 +3046,36 @@ local function _program(ptype,name,deps,lang)
     else
         args = {} -- _probably_ an error??
     end
+    ---- setting output directory and ensuring that it exists ----
     args.odir = args.odir or args.output_directory
-    if args.base then
-        if args.odir then
-            if not isabs(args.odir) then
-                args.odir = join(args.base,args.odir)
-            end
-        else
-            args.odir = args.base
-        end
-    end
-    if args.def and WINDOWS then
-        args.def = join(args.base,args.def)
-    end
-    -- @compile by default, setting base also sets the output directory,
-    -- if not specified (args.odir = false will suppress this)
-    -- we can now create a rule object to compile files of this type to object files,
-    -- using the appropriate compile command.
     local odir = args.odir
+    -- @compile setting 'odir' means we want a separate output directory. If a boolean,
+    -- then we use prefix and debug/release.
     if odir then
-        -- @compile setting 'odir' means we want a separate output directory. If a boolean,
-        -- then we make a reasonably intelligent guess.
         if odir == true then
             odir = PREFIX..choose(args.debug,'debug','release')
         end
     end
+    -- by default, setting base also sets the output directory,
+    -- if not specified (args.odir = false will suppress this)
+    if args.base then
+        if odir then
+            if not isabs(odir) then
+                odir = join(args.base,odir)
+            end
+        else
+            odir = args.base
+        end
+        args.odir = odir
+    end
     if odir and not isdir(odir) then path.mkdir(odir) end
 
+    if args.def and WINDOWS then
+        args.def = join(args.base,args.def)
+    end
+
+    -- we can now create a rule object to compile files of this type to object files,
+    -- using the appropriate compile command.
     local pcr
     if not cr and lang.compile then
         -- generally a good idea for Unix shared libraries
