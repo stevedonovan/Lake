@@ -993,30 +993,27 @@ baselang.defaults = appender()
 function lake.new_lang(bl,t)
     bl = bl or baselang
     t = t or {}
-    return inherits_from(bl)(t)
+    local lang = inherits_from(bl)(t)
+    lang.defaults = appender()
+    return lang
 end
+local new_lang = lake.new_lang
 
-c = lake.new_lang(nil,{ext='.c'})
-local CI = inherits_from(c)
-c.defaults = appender()
+c = new_lang(nil,{ext='.c'})
 
--- these chaps inherit from C lang for many of their fields
-cpp = CI{ext='.cpp'}
-f = CI{ext='.f'}
-c99 = CI{ext='.c'}
-
-cpp.defaults = appender()
-f.defaults = appender()
-c99.defaults = appender()
+-- these chaps inherit from C lang for their default compile behaviour
+cpp = new_lang(c,{ext='.cpp'})
+f = new_lang(c,{ext='.f'})
+c99 = new_lang(c,{ext='.c'})
+s = new_lang(c,{ext='.s'})
 
 -- precompiled C++ headers
-cpp_ch = inherits_from(cpp) { ext = '.h' }
+cpp_ch = new_lang(cpp,{ext='.h'})
 
 -- experimental C++11 support
-cpp11 = inherits_from(cpp) {}
+cpp11 = new_lang(cpp)
 
 wresource = {ext='.rc'}
-
 
 local extensions = {
     ['.c'] = c, ['.cpp'] = cpp, ['.cxx'] = cpp, ['.C'] = cpp,
