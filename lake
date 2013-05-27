@@ -1017,6 +1017,7 @@ wresource = {ext='.rc'}
 
 local extensions = {
     ['.c'] = c, ['.cpp'] = cpp, ['.cxx'] = cpp, ['.C'] = cpp,
+    ['.s'] = s,
     ['.f'] = f, ['.for'] = f, ['.f90'] = f,
 }
 
@@ -2089,7 +2090,10 @@ function lake.go()
     -- execute the target, passing the rest of the parms passed to Lake, unless we were
     -- explicitly asked to clean up.
     if synth_target and not synthesize_clean then
-        lake.run(synth_target,arg,synth_args_index)
+        local ok, res = lake.run(synth_target,arg,synth_args_index)
+        if not ok then -- pass on return code
+            os.exit(res)
+        end
     end
 end
 
@@ -3222,7 +3226,7 @@ function lake.add_group (lang)
     end
 end
 
-for lang in list_ {c,c99,cpp,cpp11} do
+for lang in list_ {c,c99,cpp,cpp11,s} do
     lake.add_prog(lang)
     lake.add_shared(lang)
     lake.add_library(lang)
