@@ -471,6 +471,8 @@ utils = {}
 
 local start_t, msg_t
 
+utils.clock = os.clock
+
 function utils.start_timer (msg)
     msg_t = msg
     start_t = utils.clock()
@@ -789,10 +791,9 @@ end
 local job_execute, jobs_clear, found_threads, winapi, posix
 if Windows then
     found_threads, winapi = pcall(require, 'winapi')
-	utils.clock = os.clock
 else
     found_threads, posix = pcall(require, 'posix')
-	if found_threads then
+	if found_threads and posix.getttime then
 		function utils.clock()
 			local secs,nsec = posix.clock_gettime()
 			return secs + nsec/1e9
