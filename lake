@@ -794,7 +794,7 @@ if Windows then
     found_threads, winapi = pcall(require, 'winapi')
 else
     found_threads, posix = pcall(require, 'posix')
-	if found_threads and posix.getttime then
+	if found_threads and posix.clock_gettime then
 		function utils.clock()
 			local secs,nsec = posix.clock_gettime()
 			return secs + nsec/1e9
