@@ -110,7 +110,7 @@ to build LuaFileSystem would be:
 
 If there's no explicit 'src', it is deduced from the output name.
 
-C++ is peculiar in that there is no 'canonical' file extension. In `lake`, my prejudice means that
+C++ is peculiar in that there is no 'canonical' file extension. In Lake, my prejudice means that
 C++ files have a default '.cpp' extension, but tool makers cannot be too dogmatic. So if a C++
 program uses '.cxx' then:
 
@@ -168,7 +168,7 @@ The order of configuration files is as follows: first try load `~/.lake/config.l
 
 If there is an environment variable `LAKE_PARMS`, then it's assumed to be a list of name/value
 assignments seprated by a semi-colon. (This is currently the only specific environment variable used
-by `lake`)
+by Lake)
 
 Another option is our old friend `require`. Lake modifies `package.path` so that modules are first
 found in `~/.lake/lua`. This allows Lake-specific code to be separated out and easily updated without
@@ -251,7 +251,7 @@ this everytime a new image is added.
 You only want to convert files which have changed, and this is the role of dependency-tracking tools
 like `make` .  The output files are called the _targets_, and each target depends on one or more
 input files, which are called _prerequisites_ in `make` terminology, or simply _dependencies_ in
-`lake`.
+Lake.
 
 Just as the instructions for `make` are contained inside _makefiles_, the equivalent files for Lake
 are called _lakefiles_.  When Lake is run without any parameters, it will look for `lakefile` or
@@ -305,7 +305,7 @@ that generates that file.
 Lists of files are common in Lake and can be space/comma separated strings, or as tables. So the
 'sgm.bak, test.bak' could also be written as 'sgm.bak test.bak' or `{'sgm.bak','test.bak'}`.
 
-A more `lake`-ish way of writing the same lakefile is:
+A more Lake-ish way of writing the same lakefile is:
 
     ccmd = 'copy $(DEPENDS) $(TARGET)'
     t1 = target('sgm.bak','sgm.c',ccmd)
@@ -589,54 +589,20 @@ loaded.
 ### Usual Pattern for Build Tools
 
 The usual pattern for compilers is this: source files are _compiled_ into object files, which are
-_linked_ together to make programs or shared libraries (DLLs). Generally the compilation phase is the
-time-consuming part, so we wish to only re-compile files which have changed, or _depend_ on files
-that have changed. This is important for languages (like C/C++) where the dependency on the rest of
-the source comes from include or header files.  These dependencies can come from a header file itself
-including other header files, and so forth, and has traditionally been the awkward and time-consuming
+_linked_ together to make programs or libraries. Generally the compilation phase is the
+time-consuming part, so we wish to only re-compile files which have changed, or which _depend_ on files
+that have changed. This is important for languages (like C/C++) where the extra dependencies comes
+from include or header files.  These dependencies can come from a header file itself
+including other header files, and so forth, and has traditionally been an awkward
 part of organizing the efficient building of large systems. You do not want to rebuild files
 unnecessarily, but you definitely do not want to miss out rebuilding something, since the symptoms
-can be nasty and hard to track down.
+can be subtle and hard to track down.
 
 Schematically, these tools work like this:
 
-<table>
-<tr>
-<td>
-<ul>
- <li>source file(s)</li>
- <li>compilation flags</li>
-</ul>
-</td>
-<td>
-<h3>COMPILER</h3>
-</td>
-<td>
-<ul>
- <li>object file(s)</li>
- <li>dependency information (if supported)</li>
-</ul>
-</td>
-</tr>
-<tr>
-<td>
-<ul>
-<li>object file(s)</li>
-<li>linker flags</li>
-</ul>
-</td><td>
-<h3>LINKER</h2>
-</td>
-<td>
-<ul>
-<li>program, or</li>
-<li>shared library (DLL) and import library (if supported)</li>
-</ul>
-</td>
-</tr></table>
+source files, compilation flags -> __COMPILER__ -> object files, dependency information.
 
-Note that compilers often can compile multiple files in one invocation, which often improves build
-times.
+object files, linker flags -> __LINKER__ -> program, shared library, static library.
 
 One of the things that Lake can do for you is auto-generate dependency information using facilities
 provided by the supported compilers.  In this way, a complex build can be specified with a compact
@@ -657,8 +623,8 @@ extension.
     c.program {'hello',src = 'hello utils'}
 
 This version has two source files specified explicitly.  The value of `src` follows the usual Lake
-convention for lists (a table or a string of separated names) or a wildcard. Please note that there is
-a strong temptation to forget to use _curly braces_ here; the argument is a Lua table.
+convention for lists (a table or a string of separated names) or a wildcard. Please note that it is
+easy to forget to use _curly braces_ here; the argument is a Lua table.
 
 `src` can contain wildcards. So `src = '*'` can be
 used to specify the source files, and `exclude` can be used to filter the result:
@@ -745,8 +711,7 @@ files encountered during compilation:
     $> cat one.d
     one.o: one.c common.h
 
-(One tiresome aspect of constructing robust makefiles is explicitly listing the dependencies.) This
-also works for the `CL` compiler using the somewhat obscure `/showIncludes` flag.
+This also works for the `CL` compiler using the somewhat obscure `/showIncludes` flag.
 
 So the lakefiles for even fairly large code bases can be short and sweet. In `examples/big1` there
 are a hundred generated .c files, with randomly assigned header dependencies:
@@ -760,6 +725,9 @@ The initial build takes some time, but thereafter rebuilding is quick.
 By default, Lake compiles one file at a time. If you set the global `COMBINE` then it will
 try to compile as many files as possible with one invocation. Both `GCC`
 and `CL` support this, but _not_ if you have explicitly specified an output directory.
+
+With modern multi-core processors, a better optimization is to use the `-j` ('jobs') flag which works like
+the equivalent `make` flag; run tools in parallel processes if possible.
 
 ### Building Lua Extensions
 
@@ -1222,11 +1190,7 @@ libraries well.
 
 The original error message is:
 
-    errors.cpp:9: error: 'class std::list<std::basic_string<char, std::char_traits<char>,
-std::allocator<char> >,
-    std::allocator<std::basic_string<char, std::char_traits<char>, std::allocator<char> > > >' has no
-member named
-    'append'
+    errors.cpp:9: error: 'class std::list<std::basic_string<char, std::char_traits<char>,std::allocator<char> >,   std::allocator<std::basic_string<char, std::char_traits<char>, std::allocator<char> > > >' has no member named     'append'
 
 Seasoned C++ programmers learn to filter their error messages mentally. Lake provides the ability
 to filter the output of a compiler, and reduce irrelevant noise. Here is the lakefile:
@@ -1264,7 +1228,7 @@ compilers.  It is naturally easier to add a new compiler if it follows the same 
 
   - there are separate compile and link steps
   - the link step takes the intermediate _object_ files and combines them into a program or shared
-library, and finding external symbols in libraries.
+library, and finds external symbols in libraries.
   - such external libraries are specified by optional library search paths and are included one by one.
 
 The Lake way of defining language objects is higher-level than defining the compile rules directly
@@ -1434,7 +1398,7 @@ To complete the support, we specify how to run the results of a successful compi
     lake.add_shared(clr)
     lake.register(clr,clr.ext)
 
-In 'examples/csharp', this code is found in `clr.lang.lua'. The first part of this file does compiler
+In 'examples/csharp', this code is found in `clr.lang.lua`. The first part of this file does compiler
 detection, which is a simple yes/no on Unix - do we have either `gmcs` or `mcs`? On Windows, if
 `csc.exe` is not on the path, we look in the .NET framework directory and set the appropriate path.
 By default, it will pick the latest .NET version, but the global DOTNET can be used to specify a
@@ -1545,14 +1509,13 @@ run the program, if the program has changed.
 
  * Name/Value pairs of the form `VAR=STRING`: these will be globals within the script.
  * flags:
-     - lakefile: `-f` read a named lakefile, `-d` set initial directory. `-e` will evaluate the next
-quoted argument as a lakefile.
-     - testing: `-v` for verbose, and `-t` for test - show what will be done, but don't execute the
+   * lakefile: `-f` read a named lakefile, `-d` set initial directory. `-e` will evaluate its argument as a lakefile.
+   * testing: `-v` for verbose, and `-t` for test - show what will be done, but don't execute the
 commands.
-     - compile flags:  `-g` for debug build (also `DEBUG=true`), `-s` for strict compile (also
-`STRICT=true`)
-     - building Lua C extensions: `-lua`
-     - write out unsatisfied needs to `lakeconfig.lua`: `-w`
+   * compile flags:  `-g` for debug build (also `DEBUG=true`), `-s` for non-strict compile (also
+`STRICT=false`)
+   * building Lua C extensions: `-lua`
+   * write out unsatisfied needs to `lakeconfig.lua`: `-w`
   * target(s) or a filename with extension: If the extension is known (like `.c`) then the argument
 is compiled and run as a program; any further arguments are passed to the program.
 

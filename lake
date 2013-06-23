@@ -2,14 +2,13 @@
 -- Lake - a build framework in Lua
 -- Freely distributable for any purpose, as long as copyright notice is retained. (X11/MIT)
 -- (And remember my dog did not eat your homework)
--- Steve Donovan, 2007-2010
+-- Steve Donovan, 2007-2013
 
 local usage = [[
-Lake version 1.3  A Lua-based Build Engine
+Lake version 1.4  A Lua-based Build Engine
   lake <flags> <assigments> <target(s)>
   * flags:
     -v verbose
-    -q quiet
     -t test (show but don't execute commands)
     -n don't synthesize target
     -d initial directory
@@ -25,6 +24,7 @@ Lake version 1.3  A Lua-based Build Engine
     -w write out unsatisfied needs to lakeconfig.lua
     -lua FILE build a Lua binary extension
     -install FILE install a new need or language
+    -C really clean a directory tree!
 
   * assigmnents: arguments of the form VAR=STRING assign the string
     to the global VAR. The env variable LAKE_PARMS may contain
@@ -40,25 +40,21 @@ Lake version 1.3  A Lua-based Build Engine
 
 local lfs = require 'lfs'
 local append = table.insert
-local verbose, quiet = false,false
-local specific_targets = {}
-local nbuild = 0
-local all_targets_list = {}
-local attributes = lfs.attributes
 local env = os.getenv
 local unpack = unpack
 local log = print
-
+local attributes = lfs.attributes
+local verbose = false
+local specific_targets = {}
+local nbuild = 0
+local all_targets_list = {}
 local TMPSPEC = '_t_.spec'
-local specfile
-local outspec
-local lakefile
-local change_dir,finalize,exists
+local specfile, outspec
+local change_dir,finalize,exists,Windows
 
 TESTING = false
-
 DIRSEP = package.config:sub(1,1)
-local Windows = DIRSEP == '\\'
+Windows = DIRSEP == '\\'
 WINDOWS = Windows -- we'll review this later
 
 ---some useful library functions for manipulating file paths, lists, etc.
@@ -121,19 +117,26 @@ function file.generate_target(r,tname,root)
     end
 end
 
-function file.copy(src,dest)
+local function fail (e,verbose)
+    if verbose then quit(e) else return nil,e end
+end
+
+function file.copy(src,dest,v)
     local inf,err = io.open(src,'rb')
     if err then return nil,err end
     local dir = path.splitpath(dest)
     if dir ~= '' and not path.isdir(dir) then
         local ok, e = path.mkdir(dir)
-        if not ok then return nil,e end
+        if not ok then return fail(e,v) end
     end
     local outf,err = io.open(dest,'wb')
-    if err then inf:close(); return nil,err end
+    if err then inf:close(); return fail(err,v) end
     outf:write(inf:read('*a'))
     outf:close()
     inf:close()
+    if v then
+        log ('copying '..src..' to '..dest)
+    end
     return true
 end
 
@@ -225,12 +228,10 @@ function find.include_path(candidates)
     return res
 end
 
-local function at(s,i)
-    return s:sub(i,i)
-end
+local function at(s,i) return s:sub(i,i) end
 
 path = {}
-local join
+local join, update_pwd, splitpath
 
 function path.exists(path,fname)
     if fname then fname = join(path,fname) else fname = path end
@@ -258,8 +259,6 @@ function path.isabs(path)
     end
 end
 local isabs = path.isabs
-
-local update_pwd
 
 function path.abs(...)
     local args = {...}
@@ -313,8 +312,6 @@ function path.get_directories (dir)
     return res
 end
 get_directories = path.get_directories
-
-local splitpath
 
 function path.files_from_mask (mask,recurse)
     local path,pat = splitpath(mask)
@@ -407,7 +404,6 @@ function path.expanduser(path)
     end
 end
 local expanduser = path.expanduser
-
 
 function path.replace_extension (path,ext)
     local p1,p2 = splitext(path)
@@ -988,6 +984,10 @@ end
 
 lake = {}
 
+function lake.set_log (f)
+    log = f
+end
+
 local baselang = {}
 baselang.defaults = appender()
 
@@ -1431,7 +1431,7 @@ local basic_variables = {INPUT=true,TARGET=true,DEPENDS=true,LIBS=true,CFLAGS=tr
 function exec(s,dont_fail,t)
     local cmd = subst(s)
     if basic_print and t then
-        log('built',t.target)
+        log('built '..t.target)
     else
         log(cmd)
     end
@@ -1533,7 +1533,7 @@ local function fire(t)
                 local filter = t.rule.filter or nop
                 local outf = t.rule.stdout and io.stdout or io.stderr
                 if basic_print and ok then
-                    log('built',t.target)
+                    log('built '..t.target)
                 end
                 filter({TARGET,INPUT,t.rule},'start')
                 for line in inf:lines() do
@@ -1733,8 +1733,7 @@ function lake.install_plugin (parm)
     -- convention is that plugins use quit() if they cannot load...
     dofile (fname)
     -- so if we get here we're ready to roll
-    log ('copying '..fname..' to '..dest)
-    file.copy(fname, dest)
+    file.copy(fname, dest,true)
     if kind == 'lang' then
         -- lang packages are special since they are available
         -- without explicit require in lakefiles.
@@ -1776,7 +1775,7 @@ function lake.chdir (path)
         push(dir_stack,lfs.currentdir())
         local res,err = lfs.chdir(path)
         if not res then quit(err) end
-        log('changing directory',path)
+        log('changing directory '..path)
     end
     update_pwd()
 end
@@ -1794,6 +1793,12 @@ function lake.concurrent_jobs (nj, override)
         return true
     else
         return nil,"overriden by -j flag"
+    end
+end
+
+function lake.cleantree()
+    for pat in list {'.spec','.d','.o','.obj','.so','.exe','.pdb','.pch','.gch','.lib','.exp','.dll','.a'} do
+        utils.remove(lake.expand_args('*',pat,true))
     end
 end
 
@@ -1874,8 +1879,6 @@ local function process_args()
             local opt = a:sub(2)
             if opt == 'v' then
                 verbose = true
-            elseif opt == 'q' then
-                quiet = true
             elseif opt == 'h' or opt == '-help' then
                 print(usage)
                 os.exit(0)
@@ -1910,6 +1913,11 @@ local function process_args()
                 local name,lua = getarg(),'false'
                 if opt=='lua' then lua = 'true' end
                 lakefile,err = file.temp_copy(("tp,name = lake.deduce_tool('%s'); tp.shared{name,lua=%s}"):format(name,lua))
+            elseif opt == 'C' then
+                lake.cleantree()
+                os.exit()
+            else
+                quit("unknown option "..opt)
             end
         else
             if lake.is_remote(a) then a = lake.download(a) or '?' end
@@ -2010,7 +2018,7 @@ function finalize(reason)
         if stat then
             file.copy(TMPSPEC,lakefile..'.spec')
         else
-            log('unable to recreate spec file: ',err)
+            log('unable to recreate spec file: '..err)
         end
     end
     for _,h in ipairs(hooks) do
@@ -2079,12 +2087,10 @@ function lake.go()
         end)
         targets[index_list(targets,'clean')] = t
     end
-    if not quiet then utils.start_timer 'build' end
     for t in list_(targets) do
         t.time = filetime(t.target)
         check(t.time,t)
     end
-    if not quiet then utils.end_timer() end
     jobs_clear()
     if nbuild == 0 then
         if not synth_target then log 'lake: up to date' end
