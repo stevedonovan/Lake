@@ -95,12 +95,19 @@ if Windows then
 end
 
 function file.time(fname)
+    if type(fname) ~= 'string' then
+        return fname.time
+    end
     local time,err = attributes(fname,'modification')
     if time then
         return time
     else
         return -1
     end
+end
+
+local function is_object(t)
+    return type(t) == 'table' and #t == 0 and t.time
 end
 
 local filetime = file.time
@@ -157,6 +164,9 @@ function file.read (name)
 end
 
 function file.touch(name)
+    if type(name) ~= 'string' then
+        name.time = utils.clock()
+    end
     if not path.exists(name) then
         return file.write(name,'dummy')
     else
@@ -450,6 +460,7 @@ function path.mkdir (p)
 end
 
 local function canonical_path (p)
+    if type(p) ~= 'string' then return p end
     if Windows then
         return (p:gsub('/','\\')) --:lower())
     else
@@ -1506,7 +1517,7 @@ local function fire(t)
     TARGET = t.target
     if t.cdir then TARGET=relative_to(TARGET,t.cdir) end
     SRC = t.src and table.concat(t.src,' ')
-    if t.deps then
+    if t.deps and not is_object(t.deps[1]) then
         local deps = t.deps
         if t.link_lang and t.link_lang.massage_link then
             deps = t.link_lang.massage_link(t.name,deps,t)
@@ -1567,7 +1578,7 @@ function check(time,t)
     end
 
     if t.checked then return end
-    if verbose then log('target: '..t.target) end
+    if verbose then log('target: '..tostring(t.target)) end
 
     if t.deps then
         -- the basic out-of-date check compares last-written file times.
@@ -1602,7 +1613,7 @@ local function deps_list (targets)
     deps = {}
     for target in list_(targets) do
         target = get_deps(target)
-        if type(target) == 'string' then
+        if type(target) == 'string' or is_object(target) then
             append(deps,target)
         else
             append_list(deps,target)
@@ -1639,27 +1650,31 @@ local function expand_dependencies(t)
     -- and update the dependency accordingly.
     for i = 1,#deps do
         local name = deps[i]
+        local not_object
         if type(name) ~= 'string' then
             name = get_dependencies(name)
             deps[i] = name
-            if type(name) ~= 'string' then
-                dump(name,'NOT FILE')
-                quit("not a file name")
-            end
+            not_object = not is_object(name)
+--~             if type(name) ~= 'string' then
+--~                 dump(name,'NOT FILE')
+--~                 quit("not a file name")
+--~             end
         end
-        local target = target_from_file(name)
-        if not target then
-            target = target_from_file(name,'name')
-            if target then
-                deps[i] = target.target
-            elseif not exists(name) then
-                dump(t,'target')
-                dump(t.deps,'deps')
-                quit("cannot find dependency '%s'",name)
+        if not_object then
+            local target = target_from_file(name)
+            if not target then
+                target = target_from_file(name,'name')
+                if target then
+                    deps[i] = target.target
+                elseif not exists(name) then
+                    dump(t,'target')
+                    dump(t.deps,'deps')
+                    quit("cannot find dependency '%s'",name)
+                end
             end
         end
     end
-    if verbose and not dumped[t.target] then
+    if verbose  and not dumped[t.target] then
         dump(deps,t.target)
         dumped[t.target] = true
     end
@@ -2040,6 +2055,11 @@ function lake.go()
         specfile = nil
         outspec = nil
         quit('no targets defined')
+    end
+    
+    for tt in list_(all_targets_list) do
+        tt.expanded = nil
+        tt.checked = nil
     end
 
     for tt in list_(all_targets_list) do
