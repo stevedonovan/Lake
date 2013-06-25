@@ -190,6 +190,20 @@ function file.temp_copy (s,ext)
     return res
 end
 
+local canonical_path
+
+function file.copy_tree (src,dest)
+    local res
+    if PLAT=='Windows' then
+        src = canonical_path(src)
+        dest = canonical_path(dest)
+        res = utils.execute('xcopy /S /E /I /Q "'..src..'" "'..dest..'"',true)
+    else
+        res = utils.execute('cp -R '..src..' '..dest,true)
+    end
+    return res
+end
+
 function file.find(...)
     local t_remove = table.remove
     local args = {...}
@@ -459,7 +473,7 @@ function path.mkdir (p)
     return _mkdir(p)
 end
 
-local function canonical_path (p)
+function canonical_path (p)
     if type(p) ~= 'string' then return p end
     if Windows then
         return (p:gsub('/','\\')) --:lower())
@@ -2056,7 +2070,7 @@ function lake.go()
         outspec = nil
         quit('no targets defined')
     end
-    
+
     for tt in list_(all_targets_list) do
         tt.expanded = nil
         tt.checked = nil

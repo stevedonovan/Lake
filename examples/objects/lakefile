@@ -1,0 +1,54 @@
+-- showing how it's now possible to do dependency-based programming in Lake
+-- with objects. They must define a read/write field 'time' and should
+-- also know how to show themselves appropriately.
+
+-- classic Lua OOP boilerplate
+local TO = {}
+TO.__index = TO
+TO._NOW = 1
+TO._objects = {}
+
+function TO:__tostring()
+    return "["..self.name..':'..self.time.."]"
+end
+
+function TO:update()
+    print('updating '..tostring(self))
+    self.time = TO._NOW
+end
+
+-- by default, objects have time 0!
+local function T(name,time)
+    local obj = setmetatable({name=name,time=time or 0},TO)
+    table.insert(TO._objects, obj)
+    return obj
+end
+
+-- lazy global object generation - unknown uppercase vars become target objects
+setmetatable(_G,{
+    __index = function(self,key)
+        if key:match '^%u+$' then
+            local obj = T(key)
+            rawset(_G,key,obj)
+            return obj
+        end
+    end
+})
+
+local function update(t)
+    t.target:update()
+end
+
+-- B is younger than A, so A is updated
+-- (comment this out and nothing happens)
+B.time = 1
+
+tA = target(A, {B, C},update)
+
+-- which in turn forces action on D (but it is not updated)
+tB = target(D, A, function(t)  -- could also have tA as dep..
+    print('D action!')
+    for o in list(TO._objects) do print(o) end
+end)
+
+default{ tB }
