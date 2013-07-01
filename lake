@@ -295,8 +295,13 @@ function path.abs(...)
 end
 
 local function quote_if_necessary (file)
-    if file:find '%s' then
-        file = '"'..file..'"'
+    if not file then return '' end
+    if type(file) == 'string' and file:find '%s' then
+        if Windows then
+            file = '"'..file..'"'
+        else
+            file = file:gsub('([^\\])%s','%1\\ ')
+        end
     end
     return file
 end
@@ -580,9 +585,10 @@ local marker = string.char(4)
 local function hide_spaces(q) return q:gsub(' ',marker) end
 
 function utils.split_list(s)
+    local n_esc
     s = s:gsub('^%s+',''):gsub('%s+$','') -- trim the string
-    -- on Windows spaces are escaped with quotes
-    s = s:gsub('"[^"]+"',hide_spaces)
+    -- spaces can be escaped with double quotes
+    s, n_esc = s:gsub('"[^"]+"',hide_spaces)
     local i1 = 1
     local ls = {}
     local function append_item (item)
@@ -601,8 +607,8 @@ function utils.split_list(s)
         i1 = i3+1
     end
     for i = 1,#ls do
-        if ls[i]:find(marker) then
-            ls[i] = ls[i]:gsub(marker,' ')
+        if ls[i]:match(marker) then
+            ls[i] = ls[i]:gsub(marker,' '):sub(2,-2)
         end
     end
     return ls
@@ -1134,7 +1140,7 @@ function expand_args(src,ext,recurse,base)
                 append(res,item)
             end
         end
-    end
+    end    
     canonical_paths(res)
     return res
 end
@@ -1527,8 +1533,8 @@ local function fire(t)
     --- @doc basic variables available to actions:
     -- they are kept in the basic_variables table above, since then we can use
     -- subst_all_but_basic() to replace every _other_ variable in command strings.
-    INPUT = t.input
-    TARGET = t.target
+    INPUT = quote_if_necessary(t.input)
+    TARGET = quote_if_necessary(t.target)
     if t.cdir then TARGET=relative_to(TARGET,t.cdir) end
     SRC = t.src and table.concat(t.src,' ')
     if t.deps and not is_object(t.deps[1]) then
@@ -1536,12 +1542,11 @@ local function fire(t)
         if t.link_lang and t.link_lang.massage_link then
             deps = t.link_lang.massage_link(t.name,deps,t)
         end
-        if t.cdir then
-            local odeps = deps
-            deps = {}
-            for i = 1,#odeps do
-                deps[i] = relative_to(odeps[i],t.cdir)
-            end
+        local odeps = deps
+        deps = {}
+        for i = 1,#odeps do
+            deps[i] = t.cdir and relative_to(odeps[i],t.cdir) or odeps[i]
+            deps[i] = quote_if_necessary(odeps[i])
         end
         DEPENDS = table.concat(deps,' ')
     end
@@ -2058,7 +2063,7 @@ end
 -- recursively invoke lake at the given @path with the arguments @args
 function lake_(path,args)
     args = args or ''
-    exec('lake -d '..path..'  '..args,true)
+    exec('lake -d "'..path..'"  '..args,true)
 end
 
 utils.make_callable(lake,lake_)
