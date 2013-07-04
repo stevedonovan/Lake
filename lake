@@ -297,11 +297,11 @@ end
 local function quote_if_necessary (file)
     if not file then return '' end
     if type(file) == 'string' and file:find '%s' then
-        if Windows then
+--~         if Windows then
             file = '"'..file..'"'
-        else
-            file = file:gsub('([^\\])%s','%1\\ ')
-        end
+--~         else
+--~             file = file:gsub('([^\\])%s','%1\\ ')
+--~         end
     end
     return file
 end
@@ -607,8 +607,14 @@ function utils.split_list(s)
         i1 = i3+1
     end
     for i = 1,#ls do
-        if ls[i]:match(marker) then
-            ls[i] = ls[i]:gsub(marker,' '):sub(2,-2)
+        local item = ls[i]
+        if item:match(marker) then
+            item = item:gsub(marker,' ')
+            -- unquote fully quoted items
+            if item:match '^"' then
+                item = item:sub(2,-2)
+            end
+            ls[i] = item
         end
     end
     return ls
@@ -624,15 +630,19 @@ function utils.forall(ls,action)
 end
 local forall = utils.forall
 
-function utils.remove(items)
-    if type(items) == 'string' then
-        items = split_list(items)
+function utils.remove(items,single)
+    if  type(items) == 'string' then
+        if single then
+            items = {items}
+        else
+            items = split_list(items)
+        end
     end
-    forall(items,function(f)
+    for _,f in ipairs(items) do
         if os.remove(f) then
             log ('removing',f)
         end
-    end)
+    end
 end
 
 function utils.remove_files (mask)
@@ -756,6 +766,9 @@ function list.concat(ls,pre,sep)
     local res = ''
     for i,v in ipairs(ls) do
         if v ~= '' then
+            if v:match '%s' and not v:match '"' then
+                v = quote_if_necessary(v)
+            end
             res = res..pre..v..sep
         end
     end
@@ -2120,7 +2133,7 @@ function lake.go()
             for t in list_(ALL_TARGETS) do
                 if extension_of(t) == baselang.obj_ext then
                     local dfile = replace_extension(t,'.d')
-                    if exists(dfile) then utils.remove(dfile) end
+                    if exists(dfile) then utils.remove(dfile,true) end
                 end
             end
         end)
@@ -2550,8 +2563,20 @@ local function _compile(name,compile_deps,lang)
         cflags = cflags .. ' /TP'
     end
     compile_deps = compile_deps or args.compile_deps or args.headers
+    -- preprocessor symbols can be defined with a Lua map-like table, if desired
     if args.defines then
-        cflags = cflags..concat_arg(lang.DEFDEF,args.defines,' ')
+        local defs = args.defines
+        if type(defs)=='table' and #defs == 0 then
+            local mdefs = defs
+            defs = {}
+            for key,value in pairs(mdefs) do
+                if value ~= true then
+                    key = key..'='..quote_if_necessary(value)
+                end
+                append(defs,key)
+            end
+        end
+        cflags = cflags..concat_arg(lang.DEFDEF,defs,' ')
     end
     if args.incdir then
         cflags = cflags..concat_arg(lang.incdir,args.incdir,' ',args.base)
