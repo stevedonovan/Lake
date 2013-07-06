@@ -1,7 +1,8 @@
+local pwd = PWD:gsub('\\','\\\\')
 c.program{
     'main',
     src='main "one 1.c"',  -- note the double-quotes!
-    defines={FOO=PWD},  -- can use tables instead of lists
+    defines={FOO=pwd},  -- can use tables instead of lists
     incdir='"include files"', -- ditto for includes
 }
 

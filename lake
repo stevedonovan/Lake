@@ -297,14 +297,19 @@ end
 local function quote_if_necessary (file)
     if not file then return '' end
     if type(file) == 'string' and file:find '%s' then
+        if file:find '\\$' then
+            file = file .. '\\\\'
+        end
 --~         if Windows then
             file = '"'..file..'"'
 --~         else
 --~             file = file:gsub('([^\\])%s','%1\\ ')
 --~         end
+
     end
     return file
 end
+path.quote = quote_if_necessary
 
 -- this is used for building up strings when the initial value might be nil
 --  s = concat_str(s,"hello")
@@ -1153,7 +1158,7 @@ function expand_args(src,ext,recurse,base)
                 append(res,item)
             end
         end
-    end    
+    end
     canonical_paths(res)
     return res
 end
@@ -1183,7 +1188,7 @@ local function remove_quotes (ls)
     return ls
 end
 
-local function new_target(tname,deps,cmd,upfront)
+local function new_target(tname,deps,cmd,upfront,dont_massage_deps)
     local t = setmetatable({},tmt)
     if tname == '*' then
         tname = '*'..tcnt
@@ -1192,7 +1197,10 @@ local function new_target(tname,deps,cmd,upfront)
         quit("target is nil!")
     end
     t.target = canonical_path(tname)
-    t.deps = remove_quotes(deps_arg(deps))
+    if not dont_massage_deps then
+        deps = remove_quotes(deps_arg(deps))
+    end
+    t.deps = deps
     t.cmd = cmd
     if upfront then
         table.insert(all_targets_list,1,t)
@@ -1337,7 +1345,7 @@ function rt.add_target(r,tname,deps,root)
         append_list_unique(deps,r.global_deps)
     end
 
-    local t = new_target(target_name,deps,r.cmd)
+    local t = new_target(target_name,deps,r.cmd,false,true)
     t.name = tname
     t.input = input
     t.rule = r
@@ -1578,7 +1586,7 @@ local function fire(t)
                 if basic_print and ok then
                     log('built '..t.target)
                 end
-                filter({TARGET,INPUT,t.rule},'start')
+                filter({t.target,t.input,t.rule},'start')
                 for line in inf:lines() do
                     line = filter(line)
                     if line then outf:write(line,'\n') end
@@ -2492,7 +2500,7 @@ function lake.set_flags(parms)
             -- the line containing the input file
             if dfile then write_deps() end
             dfile = path.replace_extension(target,'.d')
-            ls = {input}
+            ls = {quote_if_necessary(input)}
           else
               local file = line:match('Note: including file:%s+(.+)')
               if file then
