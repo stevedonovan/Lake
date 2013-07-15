@@ -642,7 +642,7 @@ function utils.remove(items,single)
         end
     end
     for _,f in ipairs(items) do
-        if os.remove(f) then
+        if type(f)=='string' and os.remove(f) then
             log ('removing',f)
         end
     end
@@ -1316,7 +1316,7 @@ function rt.add_target(r,tname,deps,root)
     end
     table.insert(deps,1,input)
     -- we can be dependent on headers extracted from a .d file
-    if lang and lang.uses_dfile then
+    if lang and lang.uses_dfile and not NODEPS then
         local ddeps = deps_from_d_file(replace_extension(target_name,'.d'))
         if ddeps then
             append_list_unique(deps, ddeps)
@@ -1678,10 +1678,6 @@ local function expand_dependencies(t)
             name = get_dependencies(name)
             deps[i] = name
             not_object = not is_object(name)
---~             if type(name) ~= 'string' then
---~                 dump(name,'NOT FILE')
---~                 quit("not a file name")
---~             end
         end
         if not_object then
             local target = target_from_file(name)
@@ -2104,11 +2100,12 @@ function lake.go()
     end
     -- if requested, generate a default clean target, using all the targets.
     if synthesize_clean then
+        NODEPS = true
         local t = new_target('clean',nil,function()
             utils.remove(ALL_TARGETS)
             -- Object files may have associated .d dependency file
             for t in list_(ALL_TARGETS) do
-                if extension_of(t) == baselang.obj_ext then
+                if type(f) == 'string' and extension_of(t) == baselang.obj_ext then
                     local dfile = replace_extension(t,'.d')
                     if exists(dfile) then utils.remove(dfile,true) end
                 end
@@ -2213,7 +2210,7 @@ local known_globals = {
     LOCAL_EXEC=true, -- how to execute local programs (is ./ on Unix)
     DIRSEP=true, -- directory separator on this platform
     COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
-    NODEPS=true, -- don't do automatic dependency generation
+    NODEPS=true, -- don't do automatic dependency generation or checking
     REMOTE_LAKE_URL=true --(http://stevedonovan.github.com/files) Default download location for 'get:'
 }
 
