@@ -48,8 +48,6 @@ local verbose = false
 local specific_targets = {}
 local nbuild = 0
 local all_targets_list = {}
-local TMPSPEC = '_t_.spec'
-local specfile, outspec
 local change_dir,finalize,exists,Windows
 
 TESTING = false
@@ -1207,21 +1205,6 @@ local function new_target(tname,deps,cmd,upfront,dont_massage_deps)
     else
         append(all_targets_list,t)
     end
-    if type(cmd) == 'string' then
-        if specfile then
-            -- @doc [checking against specfile]  for each target, we check the command generated
-            -- against the stored command, and delete the target if the command is different.
-            local oldcmd = specfile:read()
-            if oldcmd ~= cmd then
-                if verbose then
-                    log(oldcmd); log(cmd)
-                    log('command changed: removing '..tname)
-                end
-                os.remove(tname)
-            end
-        end
-        if outspec then outspec:write(cmd,'\n') end
-    end
     return t
 end
 
@@ -2033,9 +2016,6 @@ local function process_args()
             if not lakefile then
                 quit("'%s' does not exist",orig_lakefile or 'lakefile')
             end
-            specfile = lakefile..'.spec'
-            specfile = io.open(specfile,'r')
-            outspec = io.open(TMPSPEC,'w')
             safe_dofile(lakefile)
         end
         if next(unsatisfied_needs) then
@@ -2067,15 +2047,6 @@ function lake.on_exit (hook)
 end
 
 function finalize(reason)
-    if specfile then pcall(specfile.close,specfile) end
-    if outspec then
-        local stat,err = pcall(outspec.close,outspec)
-        if stat then
-            file.copy(TMPSPEC,lakefile..'.spec')
-        else
-            log('unable to recreate spec file: '..err)
-        end
-    end
     for _,h in ipairs(hooks) do
         pcall(h,reason)
     end
@@ -2092,8 +2063,6 @@ utils.make_callable(lake,lake_)
 function lake.go()
 
     if #all_targets_list == 0 then
-        specfile = nil
-        outspec = nil
         quit('no targets defined')
     end
 
