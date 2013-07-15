@@ -18,8 +18,9 @@ else
   if not utils.which(CSC) then quit 'mono-devel not installed' end
 end
 
+local CLR_CMD = ' -nologo  $(LIBS) -out:$(TARGET) $(SRC)'
 clr = {ext = '.cs',obj_ext='.?'}
-clr.link = '$(CSC) -nologo  $(LIBS) -out:$(TARGET) $(SRC)'
+clr.link = '$(CSC)'..CLR_CMD
 -- do this because the extensions are the same on Unix
 clr.EXE_EXT = '.exe'
 clr.DLL_EXT = '.dll'
@@ -27,13 +28,17 @@ clr.LINK_DLL = '-t:library'
 clr.LIBPOST = '.dll '
 clr.DEFDEF = '-d:'
 clr.LIBPARM = '-r:'
+clr.M32 = ''
+clr.optimize = true
 clr.flags_handler = function(self,args,compile)
    -- compilation occurs during 'link' phase for C#
   local flags
   if args.debug or DEBUG then
     flags = '-debug'
-  elseif args.optimize or OPTIMIZE then
+  elseif self.optimize and (args.optimize or OPTIMIZE) then
     flags = '-optimize'
+  else
+    flags = ''
   end
   local subsystem = args.subsystem
   if subsystem then
@@ -57,6 +62,9 @@ clr.flags_handler = function(self,args,compile)
         list.extend(args.libs,deps_libs)
      end
   end
+  if args.m32 then
+    flags = flags .. ' -platform:x86'
+  end
   return flags
 end
 
@@ -74,7 +82,20 @@ clr.process_needs = function(ptype,args)
   end
 end
 
-lake.add_prog(clr)
-lake.add_shared(clr)
-lake.register(clr,clr.ext)
+local function register (clr)
+    lake.add_prog(clr)
+    lake.add_shared(clr)
+    lake.register(clr,clr.ext)
+end
 
+function clr.family(compiler,ext,optimize)
+    local clrf = lake.new_lang(clr,{ext=ext})
+    clrf.link = compiler..CLR_CMD
+    if optimize ~= nil then
+	clrf.optimize = optimize
+    end
+    register(clrf)
+    return clrf
+end
+
+register(clr)

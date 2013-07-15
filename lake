@@ -1893,6 +1893,14 @@ local function process_args()
     local write_needs
     LUA_EXE = quote_if_necessary(arg[-1] or 'lua') -- srlua does not pass this!
     STRICT = true
+    -- @doc [config] the environment variable LAKE_PARMS can be used to supply default global values,
+    -- in the same <var>=<value> form as on the command-line; pairs are separated by semicolons.
+    local parms = env 'LAKE_PARMS'
+    if parms then
+        for pair in list_(split(parms,';')) do
+            process_var_pair(pair)
+        end
+    end
     -- @doc [config] try load ~/.lake/config.lua, then ./lakeconfig.lua.
     -- We also put ~./lake on the package path for Lake-specific
     -- plugins.  If the global LAKE_CONFIG_FILE is set, then we'll also try load that.
@@ -1914,14 +1922,6 @@ local function process_args()
     end
     update_pwd()
 
-    -- @doc [config] the environment variable LAKE_PARMS can be used to supply default global values,
-    -- in the same <var>=<value> form as on the command-line; pairs are separated by semicolons.
-    local parms = env 'LAKE_PARMS'
-    if parms then
-        for pair in list_(split(parms,';')) do
-            process_var_pair(pair)
-        end
-    end
     local no_synth_target, run_file, run_rule
     local use_lakefile = true
     local i = 1

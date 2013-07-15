@@ -1,6 +1,6 @@
+
 if arg[1] ~= 'clean' and (REINSTALL or not clr) then
   lake('.','-install clr.lang')
-  require 'lake.lang.clr'
 end
 
 --clr.shared{'out',src='MyClass',needs='winforms'}
