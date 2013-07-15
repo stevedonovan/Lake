@@ -2355,6 +2355,7 @@ function lake.set_flags(parms)
         baselang.LIBDIR = '-L'
         baselang.incdir = '-I'
         baselang.DEFDEF = '-D'
+        baselang.M32 = '-m32'
         if PLAT=='Darwin' then
             c.LINK_DLL = ' -dynamiclib -undefined dynamic_lookup'
         else
@@ -2973,6 +2974,7 @@ local program_fields = {
     base=true, -- base directory for source and includes
     precompiled_header=true, -- provide a header to be precompiled and used
     llua=true, -- name of Lua module being built
+    m32=true, -- 32-bit build on 64-bit platform
     ---- OS X support
     framework=true, -- link against framework (-framework flag)
     framework_dir=true, -- provide framework path (-F flag)
@@ -3044,9 +3046,14 @@ local function _program(ptype,name,deps,lang)
         if args.shared or args.dll then ptype = 'dll' end
         src = args.src
         except = args.exclude
-        concat_if_table(args,'libflags')
         args.flags = args.flags or args.cflags
+        if args.m32 then
+            if not lang.M32 then quit("no support for separate 32-bit compilation with this compiler") end
+            append_to_field(args,'flags',lang.M32)
+            append_to_field(args,'libflags',lang.M32)
+        end
         concat_if_table(args,'flags')
+        concat_if_table(args,'libflags')
         -- @needs specifying libraries etc by 'needs', not explicitly
         if args.needs or NEEDS then
             -- @needs extra needs for all compile targets can be set with the NEEDS global.
