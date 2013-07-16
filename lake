@@ -426,16 +426,18 @@ local extension_of = path.extension_of
 
 function path.expanduser(path)
     if path:sub(1,1) == '~' then
-        local home = env 'HOME'
-        if not home then -- has to be Windows
-            home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
+        local home = NEW_HOME
+        if not home then
+            home = env 'HOME'
+            if not home then -- has to be Windows
+                home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
+            end
         end
         return home..path:sub(2)
     else
         return path
     end
 end
-local expanduser = path.expanduser
 
 function path.replace_extension (path,ext)
     local p1,p2 = splitext(path)
@@ -695,7 +697,7 @@ end
 
 list = {}
 
-local append_list,copy_list,copy_table,append_table,erase_list,concat_list,find_list,index_list
+local append_list,append_table,index_list
 
 function list.extend(l1,l2)
     for i,v in ipairs(l2) do
@@ -725,16 +727,14 @@ append_list_unique = list.extend_unique
 function list.copy (l1)
     return append_list({},l1)
 end
-copy_list = list.copy
 
-function copy_table (t)
+function list.copy_table (t)
     local res = {}
     for k,v in pairs(t) do
         res[k] = v
     end
     return res
 end
-table.copy = copy_table
 
 function append_table(l1,l2,no_overwrite)
     if not l2 then return end
@@ -763,7 +763,6 @@ function list.erase(l1,l2)
         end
     end
 end
-erase_list = list.erase
 
 function list.concat(ls,pre,sep)
     local res = ''
@@ -777,7 +776,6 @@ function list.concat(ls,pre,sep)
     end
     return res
 end
-concat_list = list.concat
 
 function list.index(ls,val)
     for i,v in ipairs(ls) do
@@ -793,7 +791,6 @@ function list.find(ls,field,value)
         end
     end
 end
-find_list = list.find
 
 function list_(ls)
     if type(ls) == 'string' then
@@ -1246,15 +1243,8 @@ function rt:__tostring ()
     return 'rule: '..(self.label or self.cmd)..' ('..#self.targets..')'
 end
 
--- this is used by the CL output parser: e.g, cl will put out 'hello.c' and this
--- code will return 'release\hello.d' and '..\hello.c'
---~ function rt.deps_filename (r,name)
---~     local t = find_list(r.targets,'base',splitext(name))
---~     return replace_extension(t.target,'.d'), t.input
---~ end
 
 local deps_from_d_file
-
 
 -- add a new target to a rule object, with name @tname and optional dependencies @deps.
 -- @tname may have an extension which overrides the default. If the in-extension is '*',
@@ -1455,7 +1445,7 @@ end
 
 -- given a filename @fname, find out the corresponding target object.
 local function target_from_file(fname,target)
-    return find_list(all_targets_list,target or 'target',fname)
+    return list.find(all_targets_list,target or 'target',fname)
 end
 
 local basic_print
@@ -1524,7 +1514,7 @@ local function fire(t)
         -- a target with new rule was encountered, and we have to actually compile the
         -- combined targets using a fake target.
         if #combined_targets > 0 then
-            local fake_target = copy_table(first_target)
+            local fake_target = list.copy_table(first_target)
             fake_target.fake = true
             fake_target.input = table.concat(combined_targets,' ')
             fire(fake_target)
@@ -1791,7 +1781,7 @@ end
 
 local synth_target,synth_args_index
 
- function update_pwd ()
+function update_pwd ()
     local dir = lfs.currentdir()
     if Windows then dir = dir:lower() end -- canonical form
     PWD = dir..DIRSEP
@@ -1883,7 +1873,7 @@ local function process_args()
     -- @doc [config] try load ~/.lake/config.lua, then ./lakeconfig.lua.
     -- We also put ~./lake on the package path for Lake-specific
     -- plugins.  If the global LAKE_CONFIG_FILE is set, then we'll also try load that.
-    local home = expanduser '~/.lake'
+    local home = path.expanduser '~/.lake'
     lake.home = home
     package.path = home..'/?.lua;'..package.path
     local lconfig = exists_lua(join(home,'config'))
@@ -2346,7 +2336,7 @@ function lake.set_flags(parms)
             if t.ptype ~= 'dll' then return deps end
             local def = exists(name..'.def') or t.args.def
             if def and PLAT=='Windows' then
-                deps = copy_list(deps)
+                deps = list.copy(deps)
                 append(deps,def)
             end
             return deps
@@ -2523,7 +2513,7 @@ function lake.output_filter (lang,filter)
 end
 
 function concat_arg(pre,arg,sep,base)
-    return ' '..concat_list(deps_arg(arg,base),pre,sep)
+    return ' '..list.concat(deps_arg(arg,base),pre,sep)
 end
 lake.concat_arg = concat_arg
 
@@ -3013,7 +3003,7 @@ local function _program(ptype,name,deps,lang)
         src = args.src
         except = args.exclude
         args.flags = args.flags or args.cflags
-        if args.m32 then
+        if args.m32 or M32 then
             if not lang.M32 then quit("no support for separate 32-bit compilation with this compiler") end
             append_to_field(args,'flags',lang.M32)
             append_to_field(args,'libflags',lang.M32)
@@ -3245,7 +3235,7 @@ local function _program(ptype,name,deps,lang)
         src = expand_args(src,ext,args.recurse,args.base)
         if except then
             except = expand_args(except,ext,false,args.base)  -- args.recurse?
-            erase_list(src,except)
+            list.erase(src,except)
         end
         -- all these compile targets can depend on a precompiled header...
         if pcr then pcr = pcr:get_targets() end
