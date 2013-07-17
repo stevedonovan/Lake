@@ -26,7 +26,7 @@ Lake version 1.4  A Lua-based Build Engine
     -install FILE install a new need or language
     -C really clean a directory tree!
 
-  * assigmnents: arguments of the form VAR=STRING assign the string
+  * assignments: arguments of the form VAR=STRING assign the string
     to the global VAR. The env variable LAKE_PARMS may contain
     extra assignments.
 
@@ -2098,7 +2098,7 @@ function lake.go()
             utils.remove(ALL_TARGETS)
             -- Object files may have associated .d dependency file
             for t in list_(ALL_TARGETS) do
-                if type(f) == 'string' and extension_of(t) == baselang.obj_ext then
+                if type(t) == 'string' and extension_of(t) == baselang.obj_ext then
                     local dfile = replace_extension(t,'.d')
                     if exists(dfile) then utils.remove(dfile,true) end
                 end
@@ -2180,31 +2180,6 @@ local function opt_flag (flag,opt)
         return ''
     end
 end
-
--- -@doc [GLOBALS]
-local known_globals = {
-    --These can be set on the command-line (like make) and in the environment variable LAKE_PARMS
-    CC=true, -- the C compiler (gcc unless cl is available)
-    CXX=true, -- the C++ compiler (g++ unless cl is available)
-    OPTIMIZE=true, -- (O2)
-    STRICT=true, -- strict compile (also -s command-line flag)
-    DEBUG=true, -- debug build (also -g command-line flag)
-    PREFIX=true, -- (empty string). e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc
-    LUA_INCLUDE_DIR=true,
-    LUA_LIB_DIR=true, -- (usually deduced from environment)
-    WINDOWS=true, -- true for Windows builds
-    PWD=true, -- current working directory
-    BUILD_PLAT=true, -- build platform deduced from uname if not windows, 'Windows' otherwise
-    PLAT=true, -- actual target platform, usually the same as BUILD_PLAT
-    MSVC=true, -- true if we're using cl.exe
-    EXE_EXT=true, --  extension of programs on this platform
-    DLL_EXT=true, -- extension of shared libraries on this platform
-    LOCAL_EXEC=true, -- how to execute local programs (is ./ on Unix)
-    DIRSEP=true, -- directory separator on this platform
-    COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
-    NODEPS=true, -- don't do automatic dependency generation or checking
-    REMOTE_LAKE_URL=true --(http://stevedonovan.github.com/files) Default download location for 'get:'
-}
 
 function lake.set_flags(parms)
     if not parms then
