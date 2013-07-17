@@ -1,0 +1,3 @@
+lake.install_plugin 'f.lang'
+
+f.program 'hello'

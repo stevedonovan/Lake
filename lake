@@ -298,12 +298,7 @@ local function quote_if_necessary (file)
         if file:find '\\$' then
             file = file .. '\\\\'
         end
---~         if Windows then
-            file = '"'..file..'"'
---~         else
---~             file = file:gsub('([^\\])%s','%1\\ ')
---~         end
-
+        file = '"'..file..'"'
     end
     return file
 end
@@ -504,15 +499,6 @@ utils = {}
 local start_t, msg_t
 
 utils.clock = os.clock
-
-function utils.start_timer (msg)
-    msg_t = msg
-    start_t = utils.clock()
-end
-
-function utils.end_timer ()
-    warning("'%s' took %5.2f sec",msg_t,utils.clock()-start_t)
-end
 
 function utils.split(s,re)
     local i1 = 1
@@ -1048,7 +1034,6 @@ c = new_lang(nil,{ext='.c'})
 
 -- these chaps inherit from C lang for their default compile behaviour
 cpp = new_lang(c,{ext='.cpp'})
-f = new_lang(c,{ext='.f'})
 c99 = new_lang(c,{ext='.c'})
 s = new_lang(c,{ext='.s'})
 
@@ -1063,7 +1048,6 @@ wresource = {ext='.rc'}
 local extensions = {
     ['.c'] = c, ['.cpp'] = cpp, ['.cxx'] = cpp, ['.C'] = cpp,
     ['.s'] = s,
-    ['.f'] = f, ['.for'] = f, ['.f90'] = f,
 }
 
 local deps_arg, concat_arg, isrule, istarget
@@ -2202,7 +2186,6 @@ local known_globals = {
     --These can be set on the command-line (like make) and in the environment variable LAKE_PARMS
     CC=true, -- the C compiler (gcc unless cl is available)
     CXX=true, -- the C++ compiler (g++ unless cl is available)
-    FC=true, -- the Fortran compiler (gfortran)
     OPTIMIZE=true, -- (O2)
     STRICT=true, -- strict compile (also -s command-line flag)
     DEBUG=true, -- debug build (also -g command-line flag)
@@ -2245,7 +2228,6 @@ function lake.set_flags(parms)
             end
             CC = PREFIX..'gcc'
             CXX = PREFIX..'g++'
-            FC = PREFIX..'gfortran'
         else
             PREFIX = ''
             CC = CC or 'gcc'
@@ -2253,7 +2235,6 @@ function lake.set_flags(parms)
     end
     if not CXX and CC == 'gcc' then
         CXX = 'g++'
-        FC = 'gfortran'
     end
     if not OPTIMIZE then
         OPTIMIZE = 'O2'
@@ -2319,8 +2300,6 @@ function lake.set_flags(parms)
         c99.compile_combine = '$(CC) -std=c99 -c $(CFLAGS)  $(INPUT)'
         c.link = '$(CC) $(DEPENDS) $(LIBS) -o $(TARGET)'
         c99.link = c.link
-        f.compile = '$(FC) -c $(CFLAGS)  $(INPUT)'
-        flink = '$(FC) $(DEPENDS) $(LIBS) -o $(TARGET)'
         cpp.compile = '$(CXX) -c $(CFLAGS)  $(INPUT) -o $(TARGET)'
         cpp.compile_combine = '$(CXX) -c $(CFLAGS)  $(INPUT)'
         cpp.link = '$(CXX) $(DEPENDS) $(LIBS) -o $(TARGET)'
@@ -3295,7 +3274,6 @@ for lang in list_ {c,c99,cpp,cpp11,s} do
     lake.add_group(lang)
 end
 
-lake.add_prog(f)
 lake.add_group(wresource)
 lake.add_group(file)
 
