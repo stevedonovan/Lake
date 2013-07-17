@@ -917,13 +917,11 @@ if found_threads then
         else
             -- crucial bit of synchronization: only run processes in parallel
             -- generated from the _same rule_
-            if t.rule ~= current_rule then
-                while #processes > 0 do
-                    jobs_wait()
-                end
+            if t.rule ~= current_rule then -- so clear the old rule's job queue
+                jobs_wait()
                 current_rule = t.rule
             end
-            if #processes == n_threads then
+            if #processes == n_threads then -- job queue is full
                 jobs_wait()
             end
             if #processes < n_threads then
@@ -1537,6 +1535,9 @@ local function fire(t)
             if not basic_print then
                 log(cmd)
             end
+            -- whatever else happens, ensure _up front_ that target is modified,
+            -- since we could be launching the tool asynchronously!
+            lfs.touch(t.target)
             job_execute(cmd,t,function(ok,code,inf)
                 local filter = t.rule.filter or nop
                 local outf = t.rule.stdout and io.stdout or io.stderr
@@ -1848,7 +1849,6 @@ local function set_platform()
         PLAT = BUILD_PLAT
     end
     WINDOWS = PLAT=='Windows'
-    --print(BUILD_PLAT,PLAT,WINDOWS)
     if WINDOWS then
         EXE_EXT = '.exe'
         DLL_EXT = '.dll'
