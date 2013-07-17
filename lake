@@ -1699,6 +1699,18 @@ end
 
 local getter
 
+local function powershell_download (pathname,url)
+    local pscmd = 'powershell -ExecutionPolicy Bypass -NonInteractive -File tmp.ps1'
+    local templ = [[
+    $url = "%s"
+    $path = "%s"
+    (new-object System.Net.WebClient).DownloadFile($url,$path)
+    ]]
+    file.write('tmp.ps1',templ:format(url,pathname))
+    os.execute 'cat tmp.ps1'
+    return utils.execute(pscmd)
+end
+
 local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/files/'
 
 function lake.download (url,pathname)
@@ -1707,6 +1719,8 @@ function lake.download (url,pathname)
             getter = 'curl -s -f -o '
         elseif utils.which 'wget' then
             getter = 'wget -q _N -O '
+        elseif utils.which 'powershell' then
+            getter = powershell_download
         else
             quit 'cannot find either wget or curl on your system'
         end
@@ -1718,7 +1732,12 @@ function lake.download (url,pathname)
     end
     log ('downloading... '..url)
     pathname = pathname or path.basename(url)
-    local stat = utils.execute(getter..pathname..' '..url,true)
+    local stat
+    if type(getter) == 'string' then
+        stat = utils.execute(getter..pathname..' '..url,true)
+    else
+        stat = getter(pathname,url)
+    end
     return stat and path.exists(pathname)
 end
 
