@@ -1,7 +1,7 @@
 file={'lake.luadoc','lakelibs.luadoc'}
 project = 'lake'
-readme = 'doc/index.md'
-dir = 'out'
+readme = 'index.md'
+dir = 'doc'
 format = 'discount'
-no_return_or_parms=true
+style = '.'
 

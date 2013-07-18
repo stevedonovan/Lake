@@ -6,8 +6,8 @@ Freely distributable for any purpose, as long as copyright notice is retained. (
 Steve Donovan, 2007-2013
 
     Lake version 1.4  A Lua-based Build Engine
-      lake <__flags__> <__assigments__> <__target(s)__>
-      __flags__:
+      lake <flags> <assigments> <target(s)>
+      flags:
         -v verbose
         -t test (show but don't execute commands)
         -n don't synthesize target
@@ -26,11 +26,11 @@ Steve Donovan, 2007-2013
         -install FILE install a new need or language
         -C really clean a directory tree!
 
-      __assignments__: arguments of the form VAR=STRING assign the string
+      assignments: arguments of the form VAR=STRING assign the string
         to the global VAR. The env variable LAKE_PARMS may contain
         extra assignments, which occur before any other configuration file is loaded.
 
-      __target(s)__: any targets of the lakefile; if a file with a recognized
+      target(s): any targets of the lakefile; if a file with a recognized
         extension, build and run, passing any remaining arguments, unless -n
         is specified. Lua scripts are run directly using Lake and have access
         to all defined libraries.
@@ -54,7 +54,6 @@ are loaded when resolving unknown needs.
 --------------
 -- Globals understood by Lake
 configuration_globals = {
-    --These can be set on the command-line (like make) and in the environment variable LAKE_PARMS
     LAKE_CONFIG_FILE=true, -- extra configuration file
     CC=true, -- the C compiler (gcc unless cl is available)
     CXX=true, -- the C++ compiler (g++ unless cl is available)
@@ -64,9 +63,9 @@ configuration_globals = {
     PREFIX=true, -- (empty string). e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc
     NEEDS=true, -- (nil) any additional needs for the build
     M32=true, -- (false) do a 32-bit build on 64-bit platform if possible
-    FULL_OUTPUTNAME=true, (false) build a unique output name for targets from their name and dir
-    LUA_INCLUDE_DIR=true, (deduced) Lua include directory for 'lua' need
-    IGNORE_LUAROCKS=true, (false) don't use Lua configuration from luarocks if installed.
+    FULL_OUTPUTNAME=true, --(false) build a unique output name for targets from their name and dir
+    LUA_INCLUDE_DIR=true, --(deduced) Lua include directory for 'lua' need
+    IGNORE_LUAROCKS=true, --(false) don't use Lua configuration from luarocks if installed.
     LUA_LIB_DIR=true, -- (deduced) Lua library directory
     WINDOWS=true, -- true for Windows builds
     BUILD_PLAT=true, -- build platform deduced from `uname` if not windows, 'Windows' otherwise
@@ -74,9 +73,9 @@ configuration_globals = {
     MSVC=true, -- true if we're using cl.exe
     COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
     NODEPS=true, -- don't do automatic dependency generation or checking
-    REMOTE_LAKE_URL=true, --(http://stevedonovan.github.com/files) Default download location for 'get:'
+    REMOTE_LAKE_URL=true, -- (`http://stevedonovan.github.com/files` ) Default download location for 'get:'
     NEW_HOME=true, -- (nil) overrides default for `path.expanduser` '~'
-    _DEBUG=true, (false) don't suppress Lua stack trace - useful for debugging Lake.
+    _DEBUG=true, --(false) don't suppress Lua stack trace - useful for debugging Lake.
 }
 
 ----------

@@ -1,5 +1,6 @@
 -----------
 -- global functions available with Lake.
+-- @set no_return_or_parms=true
 
 --- write out a warning message, where `reason` is a `string.format` string.
 function warning(reason,...)  end
