@@ -9,6 +9,7 @@ Lake version 1.4  A Lua-based Build Engine
   lake <flags> <assigments> <target(s)>
   * flags:
     -v verbose
+    -q quiet
     -t test (show but don't execute commands)
     -n don't synthesize target
     -d initial directory
@@ -1013,7 +1014,7 @@ end
 lake = {}
 
 function lake.set_log (f)
-    log = f
+    log = f or function() end
 end
 
 local baselang = {}
@@ -1906,6 +1907,8 @@ local function process_args()
             local opt = a:sub(2)
             if opt == 'v' then
                 verbose = true
+            elseif opt == 'q' then
+                lake.set_log()
             elseif opt == 'h' or opt == '-help' then
                 print(usage)
                 os.exit(0)
@@ -1973,6 +1976,7 @@ local function process_args()
     end
     lake.set_flags()
     if run_file or run_rule then
+        lake.set_log()
         if run_file and run_rule == nil then
             local new_arg = {}
             for k = i+1,#arg do
@@ -2475,13 +2479,19 @@ end
 
 function lake.output_filter (lang,filter)
     local old_filter = lang.filter
-    lang.filter = function(line,action)
+    local filter = function(line,action)
         if not action then
             if old_filter then line = old_filter(line) end
             if line then return filter(line) end
         else
             if old_filter then old_filter(line,action) end
         end
+    end
+    if istarget(lang) then
+        if not lang.rule then lang.rule = {} end
+        lang.rule.filter = filter
+    else
+        lang.filter = filter
     end
 end
 
