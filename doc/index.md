@@ -171,7 +171,7 @@ assignments seprated by a semi-colon. (This is currently the only specific envir
 by Lake)
 
 Another option is our old friend `require`. Lake modifies `package.path` so that modules are first
-found in `~/.lake/lua`. This allows Lake-specific code to be separated out and easily updated without
+found in `~/.lake`. This allows Lake-specific code to be separated out and easily updated without
 administrator privileges on Unix systems. There are some conventions; any imported new needs are
 'lake.needs.NEED' and any new languages are `lake.lang.LANG`.
 
@@ -1583,123 +1583,6 @@ same way that there is a thin athletic person inside every fat couch potato.  To
 external dependencies, Lake defines a lot of useful functionality which can be used for other
 purposes. Also, these facilities are very useful within more elaborate lakefiles.
 
-### `utils`
-
- - `utils.split(s,pat)` -- splits a string into a list using a pattern representing the separator
- - `utils.split_list(s)` -- splits a string assuming the separator is a space or comma
- - `utils.subst(str,exclude,T)`
- - `utils.substitute(str,T)`
- - `utils.shell_nl(cmd,....)`  executes a shell command which can contain % specifiers like
-string.format. It may _also_ contain $(VAR) references.
- - `utils.shell(cmd,...)` -- like shell_nl without the trailing newline.
- - `utils.forall(ls,action)` -- calls action for every item in ls
- - `utils.remove(ls)`  -- deletes a list of files
- - `utils.remove_files(mask)`  -- deletes files matching a shell mask (like *.bak)
- - `utils.readlines(f)` -- works like f:lines(), except it will handle lines separated by '\'
- - `utils.which (prog)` -- looks for prog on the system path
- - `utils.foreach(ls,action)` -- returns a function which calls utils.forall.  For example,
-`target('start',nil,utils.foreach,ls`
- - `utils.quote(fun)`  -- 'quotes' a function; `utils.foreach = utils.quote(utils.forall)`
-
-### `file`
-
- - `file.copy(src,dest)`   -- copy the file
- - `file.write (name,text)`  -- write the text into the file 'name'
- - `file.read (name)`   -- read the text from 'name'
- - `file.touch(name)`   -- update the timestamp on 'name'; will create a dummy if it doesn't exist,
-like the Unix `touch` command.
- - `file.time(fname)`   -- time of last modification
- - `file.temp ()`   -- a temporary filename
- - `file.temp_copy (s)`  -- copy the text to a temp file, return that filename.
- - `file.group(args)`  -- a group that creates copy-file targets - e.g.
-`file.group{src='*.c',odir='backup'}`
- - `file.find(...)`
-
-### `path`
-
- - `path.exists(p,name)` -- if path exists, return it.
- - `path.isdir(p)`  -- a directory?
- - `path.isfile(p)`  -- a file?
- - `path.isabs(p)` -- an absolute path?
- - `path.get_files(files,p,pat,recurse)`
- - `path.get_directories(dir)`  -- list of all directories in given directory
- - `path.dirs(dir)`  -- an iterator form of get_directories
- - `path.files_from_mask(mask)` -- list of files from shell mask (e.g. '*.c')
- - `path.mask(mask)` -- an iterator form of files_from_mask
- - `path.splitpath(p)`  -- returns directory part and file part
- - `path.splitext(p)`  -- returns base part and extension part
- - `path.dirname(p)` -- directory part
- - `path.basename(p)` -- file part
- - `path.extension_of(p)` -- extension part
- - `path.expanduser(p)`  -- initial '~' is expanded to the user's home directory
- - `path.replace_extension(p,ext)`  -- new path with given extension
- - `path.join(p1,p2,p3)`
-
-### `table` (extra functions)
-
- - `table.copy(t)` -- a shallow copy of the table
- - `table.update(t1,t2)`  -- add contents of `t2` to `t1`
- - `table.set(ls)`  -- turn a list into a set, e.g. `{'one','two'}` becomes `{one=true,two=true}`.
-
-### Lake
-
- - `lake.deduce_tool(a,true)`
- - `lake.program (a)` -- this is the mother of all functions, The following fields are available:
-     -  `name` -- name of target (or first value of table)
-     -  `needs` -- higher-level specification of target link requirements
-     -  `libdir` -- list of lib directories
-     -  `libs` -- list of libraries
-     -  `libflags` -- list of flags for linking
-     -  `subsystem` -- (Windows) GUi application
-     -  `strip` -- strip symbols from output
-     -  `rules,inputs` -- explicit set of compile targets
-     -  `shared,dll` -- a DLL or .so (with lang.library)
-     -  `deps` -- explicit dependencies of a target (or subsequent values in table)
-     -  `export` -- this executable exports its symbols
-     -  `dynamic` -- link dynamically against runtime (default true for GCC, override for MSVC)
-     -  `static` -- statically link this target
-     -  `headers` -- explicit list of header files (not usually needed with auto deps)
-     -  `odir` -- output directory; if true then use 'debug' or 'release'; prepends PREFIX
-     -  `src` -- src files, may contain directories or wildcards (extension deduced from lang or `ext`)
-      -  `exclude` -- a similar list that should be excluded from the source list (e.g. if src='*')
-     -  `ext` -- extension of source, if not the usual. E.g. ext='.cxx'
-     -  `defines` -- C preprocessor defines
-     -  `incdir` -- list of include directories
-     -  `flags` -- extra compile flags
-     -  `debug` -- override global default set by -g or DEBUG variable
-     -  `optimize` -- override global default set by OPTIMIZE variable
-     -  `strict` -- strict compilation of files
-     -  `base` -- base directory for source and includes
- - `lake.on_exit(fun)` -- this function will be called after the lakefile is loaded, but before the
-dependencies are calculated. Can be used to generate a default target for special applications.
- - `lake.run(prog,args,istart)` -- run a program or a target, given some arguments. It will only
-include arguments starting at istart, if defined. If it is a target, the target's language may define
-a runner; otherwise we look for an interpreter or default to local execution of the program.
- - `lake.deduce_tool(fname,no_error)` -- take a filename and return a corresponding language object.
- - `lake.define_pkg_need (name,package)` -- handling external needs - if an alias `name` for
-`package` is provided, then this package is available using the alias (e.g. 'gtk') and _must_ be
-handled by pkg-config.
- - `lake.add_program_option(options)` -- add the options to the list of allowed program options.
- - `lake.register(lang,extra)`  -- add a new language object. There may be an optional list of other
-extensions which are associated with the language.
- - `lake.deps_arg(deps,base)` -- dependencies are stored as lists, but if you go through deps_arg,
-then any string delimited with ' ' or ',' will be converted into an appropriate list. This function
-is guaranteed to return a plain list, and will wrap other objects like targets and rules
-appropriately. Target lists are extracted.
- - `lake.expand_args(src,ext,recurse,base)` -- goes one step further than deps_arg(); it will expand
-a wildcard expression into a list of files as well as handling lists as strings. If the argument is a
-table, it will attempt to expand each string - e.g. {'a','b c'} => {'a','b','c'}
- - `lake.add_prog (lang)` -- create `lang.program()`
- - `lake.add_shared (lang)` -- create `lang.shared()`
- - `lake.add_group (lang)`  -- create `lang.group()`
- - `lake.add_library (lang)`  -- create `lang.library()`
- - `lake.compile(args,deps)`  -- this will use `deduce_tool` to find the language and call its
-`compile` function.
- - `lake.shared(fname,deps)` -- this will use `deduce_tool` to find the language and call its
-`shared` function.
-
-### Examples
-
 we can load 'lake' as a module:
 
     $ lua
@@ -1721,6 +1604,8 @@ we can load 'lake' as a module:
     examples/big1/c007.c
 
 Note that all of these libraries are available when a script is invoked with `lake script.lua`.
+
+
 
 `lake.expand_args` is a file grabber which recursively looks into directories, if the third parameter
 is `true`.

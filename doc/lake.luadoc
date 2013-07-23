@@ -1,9 +1,7 @@
 --[[------
-Lake - a build framework in Lua
+Lake - a build framework in Lua.
 
-Freely distributable for any purpose, as long as copyright notice is retained. (X11/MIT)
-(And remember my dog did not eat your homework)
-Steve Donovan, 2007-2013
+Freely distributable for any purpose, as long as copyright notice is retained.
 
     Lake version 1.4  A Lua-based Build Engine
       lake <flags> <assigments> <target(s)>
@@ -47,6 +45,8 @@ also start at `~/.lake`. Plugins are loaded into this module path:
 Installing a language plugin causes it to be required from `~/.lake/config.lua`; needs plugins
 are loaded when resolving unknown needs.
 
+@license X11/MIT (And remember my dog did not eat your homework)
+@copyright Steve Donovan, 2007-2013
 
 @script lake
 ]]
@@ -58,11 +58,11 @@ configuration_globals = {
     CC=true, -- the C compiler (gcc unless cl is available)
     CXX=true, -- the C++ compiler (g++ unless cl is available)
     OPTIMIZE=true, -- (O2)
-    STRICT=true, -- don't compile strictly (also -s command-line flag)
-    DEBUG=true, -- debug build (also -g command-line flag)
+    STRICT=true, -- do _not_ compile strictly (also `-s` command-line flag)
+    DEBUG=true, -- debug build (also `-g` command-line flag)
     PREFIX=true, -- (empty string). e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc
     NEEDS=true, -- (nil) any additional needs for the build
-    M32=true, -- (false) do a 32-bit build on 64-bit platform if possible
+    M32=true, -- (false) do a 32-bit build on 64-bit platform if possible (`-m32`)
     FULL_OUTPUTNAME=true, --(false) build a unique output name for targets from their name and dir
     LUA_INCLUDE_DIR=true, --(deduced) Lua include directory for 'lua' need
     IGNORE_LUAROCKS=true, --(false) don't use Lua configuration from luarocks if installed.
@@ -73,7 +73,7 @@ configuration_globals = {
     MSVC=true, -- true if we're using cl.exe
     COMBINE=true, -- allow the compiler to compile multiple files at once (if it is capable)
     NODEPS=true, -- don't do automatic dependency generation or checking
-    REMOTE_LAKE_URL=true, -- (`http://stevedonovan.github.com/files` ) Default download location for 'get:'
+    REMOTE_LAKE_URL=true, -- Default download location for 'get' pseudo-protocol
     NEW_HOME=true, -- (nil) overrides default for `path.expanduser` '~'
     _DEBUG=true, --(false) don't suppress Lua stack trace - useful for debugging Lake.
 }
@@ -87,4 +87,53 @@ globals = {
     DLL_EXT=true, -- extension of shared libraries on this platform
     DIRSEP=true, -- directory separator on this platform
 }
+
+-------
+-- Fields understood by `library` and `program`, etc.
+program_fields = {
+    name=true, -- name of target (or first value of table)
+    lua=true,  -- build against Lua libs (rather use `needs='lua'`)
+    args=true,  -- any default arguments (works like lang.defaults, doesn't override)
+    needs=true, -- higher-level specification of target link requirements
+    libdir=true, -- list of lib directories
+    libs=true, -- list of libraries
+    libflags=true, -- list of flags for linking
+    subsystem=true, -- (Windows) GUI application (default `false`)
+    def=true, -- (Windows) explicit .def file
+    strip=true,  -- strip symbols from output (default `true`)
+    inputs=true, -- explicit set of compile targets
+    shared=true, -- a DLL or .so (with lang.library)
+    dll=true, -- a DLL or .so (with lang.library)
+    deps=true, -- explicit dependencies of a target (or subsequent values in table)
+    compile_deps=true, -- explicit dependencies of source files
+    export=true, -- this executable exports its symbols
+    dynamic=true, -- link dynamically against runtime (default `true` for GCC, override for MSVC)
+    static=true, -- statically link this target
+    headers=true, -- explicit list of header files (not usually needed with auto deps)
+    odir=true, -- output directory; if true then use 'debug' or 'release'; if non-nil use it as output directory directly; prepends PREFIX
+    output_directory=true, -- same as `odir`
+    src=true, -- src files, may contain directories or wildcards (extension deduced from lang or `ext`)
+    exclude=true,	-- a similar list that should be excluded from the source list (e.g. when `src='*'`)
+    recurse=true, -- recursively find source files specified in `src=wildcard`
+    ext=true, -- extension of source, if not the usual. E.g. `ext='.cxx'`
+    defines=true, -- C preprocessor defines
+    incdir=true, -- list of include directories
+    flags=true,	 -- extra compile flags
+    cflags=true, -- same as `flags`
+    cdir=true, -- run tool in this directory
+    compile_directory=true, -- same as `cdir`
+    debug=true, -- override global default set by `-g` or `DEBUG` variable
+    optimize=true, -- override global default set by `OPTIMIZE` variable
+    strict=true, -- strict compilation of files (default `true`)
+    base=true, -- base directory for source and includes
+    precompiled_header=true, -- provide a header to be precompiled and used
+    llua=true, -- name of Lua module being built
+    m32=true, -- 32-bit build on 64-bit platform
+    framework=true, -- (OS X) link against framework
+    framework_dir=true, -- (OS X) provide framework path
+    universal=true,  -- (OS X) universal 32bit/64bit Intel binary
+    min_version=true, -- (OS X) minimum OS X version (default 10.5)
+}
+
+
 

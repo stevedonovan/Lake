@@ -1,6 +1,8 @@
 WHAT=table.concat(arg,' ')
 for d in path.dirs 'examples' do
-  lake(d,WHAT)
+  if not d:match 'big1$' then -- don't bother with the big one for tests...
+     lake(d,WHAT)
+  end
 end
 if WHAT:match'clean$' then -- let's be really thorough
   for pat in list {'.spec','.d','.o','.obj'} do
