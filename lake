@@ -1698,14 +1698,14 @@ local function powershell_download (pathname,url)
     return utils.execute(pscmd)
 end
 
-local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/lake/plugins'
+local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/lake/plugins/'
 
 function lake.download (url,pathname)
     if not getter then
         if utils.which 'curl' then
             getter = 'curl -s -f -o '
         elseif utils.which 'wget' then
-            getter = 'wget -q _N -O '
+            getter = 'wget  -O ' 
         elseif utils.which 'powershell' then
             getter = powershell_download
         else
