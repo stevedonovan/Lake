@@ -1698,14 +1698,14 @@ local function powershell_download (pathname,url)
     return utils.execute(pscmd)
 end
 
-local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/lake/plugins/'
+local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.io/lake/plugins/'
 
 function lake.download (url,pathname)
     if not getter then
         if utils.which 'curl' then
             getter = 'curl -s -f -o '
         elseif utils.which 'wget' then
-            getter = 'wget  -O ' 
+            getter = 'wget  -O '
         elseif utils.which 'powershell' then
             getter = powershell_download
         else
@@ -1899,7 +1899,12 @@ local function process_args()
     local i = 1
     while i <= #arg do
         local a = arg[i]
-        local function getarg() local res = arg[i+1]; i = i + 1; return res end
+        local function getarg()
+            local res = arg[i+1]
+            if res == nil or res:match '^%-' then quit("parameter '%s' was expecting a value",a) end
+            i = i + 1
+            return res
+        end
         if process_var_pair(a) then
             -- @doc <name>=<val> pairs on command line for setting globals
         elseif a:sub(1,1) == '-' then
@@ -1954,8 +1959,12 @@ local function process_args()
             if lake.is_remote(a) then a = lake.download(a) or '?' end
             if not no_synth_target and a:find('%.') and exists(a) then
                 -- Lua scripts are run directly, unless specifically switched off with '-n'
-                if extension_of(a) == '.lua' then
+                local ext = extension_of(a)
+                if ext == '.lua' then
                     run_file = a
+                    break
+                elseif ext == '.lake' then
+                    lakefile = a
                     break
                 else  --  see if we have a suitable rule for processing  a file with this extension.
                     local _,_,rule = lake.deduce_tool(a,true)
