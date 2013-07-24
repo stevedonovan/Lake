@@ -122,6 +122,9 @@ Note that 'src' remains a list of files without their extension.
 
     c.library{'lua',src='*',defines='LUA_USE_LINUX',exclude='lua luac print'}
 
+Please note that 'list' here means both a string separated by commas or spaces, or a Lua table; all lists
+are converted internally into Lua tables.  Filenames with spaces can be double-quoted in strings.
+
 There are also some need aliases - for instance, 'gtk' is short for 'gtk+-2.0'. If a need is not
 known, then Lake tries to use `pkg-config`. So simply adding the need 'gtk' to a program will make
 it build against the GTK+ libraries.
@@ -1444,8 +1447,6 @@ except that the extension is now '.m'. We can hook into the compile and link pha
 
     obj.program{'first',src='main car'}
 
-(?) obj.lang.lua!
-
 ### Running Tests
 
 This is an important activity, and it's useful to have some tool support.
@@ -1504,78 +1505,6 @@ run the program, if the program has changed.
     gcc needs-lib1.o liblib1.a  -Wl,-s -o with_lib.exe
     with_lib.exe >with_lib-output
 
-
-### Command-line Flags
-
- * Name/Value pairs of the form `VAR=STRING`: these will be globals within the script.
- * flags:
-   * lakefile: `-f` read a named lakefile, `-d` set initial directory. `-e` will evaluate its argument as a lakefile.
-   * testing: `-v` for verbose, and `-t` for test - show what will be done, but don't execute the
-commands.
-   * compile flags:  `-g` for debug build (also `DEBUG=true`), `-s` for non-strict compile (also
-`STRICT=false`)
-   * building Lua C extensions: `-lua`
-   * write out unsatisfied needs to `lakeconfig.lua`: `-w`
-  * target(s) or a filename with extension: If the extension is known (like `.c`) then the argument
-is compiled and run as a program; any further arguments are passed to the program.
-
-
-### Globals
-
-    WINDOWS
-    PLAT
-    DIRSEP
-    TESTING
-    LOCAL_EXEC
-    EXE_EXT
-    DLL_EXT
-    LIBS
-    CFLAGS
-    INPUT
-    TARGET
-    DEPENDS
-    ALL_TARGETS
-    OPTIMIZE
-
-    C_LINK_PREFIX
-    C_LINK_DLL
-    C_EXE_EXPORT
-    C_STRIP
-    C_LIBSTATIC
-    LIB_PREFIX
-    LIB_EXT
-    C_LIBPARM
-    C_LIBPOST
-    C_LIBDIR
-    C_DEFDEF
-    LIB_PREFIX
-    SUBSYSTEM
-    C_LIBDYNAMIC
-
-
-These can be set on the command-line (like make) and in the environment variable LAKE_PARMS
-
-        CC - the C compiler (gcc unless cl is available)
-        CXX - the C++ compiler (g++ unless cl is available)
-        FC - the Fortran compiler (gfortran)
-        OPTIMIZE - (O1)
-        STRICT - strict compile (also -s command-line flag)
-        DEBUG - debug build (also -g command-line flag)
-        PREFIX - (empty string. e.g. PREFIX=arm-linux makes CC become arm-linux-gcc etc)
-        NEEDS - any needs a build may require, for instance 'socket' or 'gtk': works with needs
-parameter
-        LUA_INCLUDE,LUA_LIB - (usually deduced from environment)
-        WINDOWS - true for Windows
-        PLAT - platform deduced from uname if not windows, 'Windows' otherwise
-        MSVC - true if we're using cl
-        EXE_EXT -  extension of programs on this platform
-        DLL_EXT - extension of shared libraries on this platform
-        DIRSEP - directory separator on this platform
-        NO_COMBINE - don't allow the compiler to compile multiple files at once (if it is capable)
-        NODEPS - don't do automatic dependency generation
-
-(?) NO_COMBINE -> COMBINE!! And the Java example needs to override the default...
-
 ## Lake as a Lua Library
 
 I have a feeling that there is a small, compact dependencies library buried inside `lake.lua` in the
@@ -1583,7 +1512,8 @@ same way that there is a thin athletic person inside every fat couch potato.  To
 external dependencies, Lake defines a lot of useful functionality which can be used for other
 purposes. Also, these facilities are very useful within more elaborate lakefiles.
 
-we can load 'lake' as a module:
+we can load 'lake' as a module. Here `lake.expand_args` is a file grabber which recursively looks
+into directories, if the third parameter is `true`.
 
     $ lua
     Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio
@@ -1605,10 +1535,8 @@ we can load 'lake' as a module:
 
 Note that all of these libraries are available when a script is invoked with `lake script.lua`.
 
-
-
-`lake.expand_args` is a file grabber which recursively looks into directories, if the third parameter
-is `true`.
+You may use `lake` as a regular Lua library using `require` if a copy (or preferrably a symlink) called `lake.lua` is
+on your Lua module path.
 
 The `list` table provides some useful functions for operating on array-like tables.  It is callable,
 and acts as an iterator:
@@ -1617,8 +1545,21 @@ and acts as an iterator:
     one
     two
     three
+    > -- `list` can also be passed a space-or-comma separated string.
+    > for s in list 'ein zwei' do print(s) end
+    ein
+    zwei
+    > ls = L{'one',nil,'two "three 3"',{'four','five'}}
+    > for s in list(ls) do print(s) end
+    one
+    two
+    three 3
+    four
+    five
 
-`list` can also be passed a space-or-comma separated string.
+The 'list constructor' `L` makes a _flattened_ Lua table from a source containing strings, tables or `nil`.
+It removes the 'holes', expands the strings, and copies the tables. Note that you can double-quote a string
+with spaces, which can happen if you genuinely cannot avoid such a file path.
 
 There are other useful functions for working with lists and tables:
 
@@ -1631,13 +1572,12 @@ There are other useful functions for working with lists and tables:
     4
     > = list.index({10,20,30},20)
     2
-    > ls = {ONE=1}
-    > table.update(ls,{TWO=2,THREE=3})
-    > for k,v in pairs(ls) do print(k,v) end
+    > t = {ONE=1}
+    > utils.update(t,{TWO=2,THREE=3})
+    > for k,v in pairs(t) do print(k,v) end
     THREE   3
     TWO     2
     ONE     1
-
 
 There are cross-platform functions for doing common things with paths and files
 
@@ -1684,6 +1624,8 @@ list:
     > = utils.subst('$(FRED) $(DEBUG)',{DEBUG=true})
     ok $(DEBUG)
 
+Much of Lake's magic is done using this very useful function. It's used to expand compile strings
+while still leaving some parameters for later expansion.
 
 ## Future Directions
 
@@ -1704,15 +1646,14 @@ as a library.  The general cross-platform utilities could be extracted and perha
 
 lake` has got too large to be a single-file script, and modularization will make it easier to
 maintain.  My initial feeling was to make Lake as easy as possible to install, but this is not
-really a very strong argument for bad practice!
+really a very strong argument for bad practice, particularly as tools like `squish` and `soar`
+make generating standalone archives containing many Lua modules.
 
 There are some common patterns which are not supported, for instance _installation_ and _running
 tests_.  The former is awkward to do well in a cross-platform way, but the latter is definitely a
 good candidate. As Lake becomes more modular, it becomes easier to write extensions, rather than
 burdening the core with every possible scenario.
 
-Dependency-driven programming goes beyond operations on files. A more general framework would work
-with any set of objects which supported a property which behaved _like_ a timestamp.
 
 
 

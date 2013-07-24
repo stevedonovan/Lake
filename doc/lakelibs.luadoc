@@ -18,6 +18,12 @@ function choose(cond,v1,v2) end
 --- return `a` if it isn't `nil`, otherwise `b`
 function pick(a,b) end
 
+--- expands sublists and removes holes.
+-- Any strings delimited with spaces or commas are also split into lists using `lake.deps_arg`.
+-- @usage L'one two' == {'one','two'}
+-- @usage L{IF(X,'a'),IF(Y,{'one','two'}} == {'one','two'} if X is true, Y is false
+function L(t) end
+
 --- for debug purposes: dump out a table with optional message
 function dump(t,msg) end
 
@@ -159,6 +165,12 @@ function utils.split2(s,delim) end
 --- split a string with items separated by commas or spaces.
 -- This honours \ escapes on Unix and double-quotes on Windows.
 function utils.split_list(s) end
+
+--- make a shallow copy of a table.
+function utils.copy_table (t) end
+
+--- update first table using key/val pairs from second table.
+function utils.append_table (t1,t2) end
 
 --- compatible wrapper over `os.execute`.
 -- `quiet` prevents any console output.

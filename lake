@@ -678,13 +678,32 @@ function utils.which (prog)
     end
 end
 
-function is_simple_list (t)
-    return type(t) == 'table' and t[1]
+function utils.copy_table (t)
+    local res = {}
+    for k,v in pairs(t) do
+        res[k] = v
+    end
+    return res
 end
+
+function is_simple_list (t)
+    return type(t) == 'table' and #t > 0
+end
+
+local function append_table(l1,l2,no_overwrite)
+    if not l2 then return end
+    for k,v in pairs(l2) do
+        if not no_overwrite or l1[k] == nil then
+            l1[k] = v
+        end
+    end
+    return l1
+end
+utils.append_table = append_table
 
 list = {}
 
-local append_list,append_table,index_list
+local append_list,index_list
 
 function list.extend(l1,l2)
     for i,v in ipairs(l2) do
@@ -715,26 +734,7 @@ function list.copy (l1)
     return append_list({},l1)
 end
 
-function list.copy_table (t)
-    local res = {}
-    for k,v in pairs(t) do
-        res[k] = v
-    end
-    return res
-end
-
-function append_table(l1,l2,no_overwrite)
-    if not l2 then return end
-    for k,v in pairs(l2) do
-        if not no_overwrite or l1[k] == nil then
-            l1[k] = v
-        end
-    end
-    return l1
-end
-table.update = append_table
-
-function table.set(ls)
+function utils.set(ls)
     local res = {}
     for item in list_(ls) do
         res[item] = true
@@ -1497,7 +1497,7 @@ local function fire(t)
         -- a target with new rule was encountered, and we have to actually compile the
         -- combined targets using a fake target.
         if #combined_targets > 0 then
-            local fake_target = list.copy_table(first_target)
+            local fake_target = utils.copy_table(first_target)
             fake_target.fake = true
             fake_target.input = table.concat(combined_targets,' ')
             fire(fake_target)
@@ -1976,7 +1976,6 @@ local function process_args()
     end
     lake.set_flags()
     if run_file or run_rule then
-        lake.set_log()
         if run_file and run_rule == nil then
             local new_arg = {}
             for k = i+1,#arg do
@@ -2923,7 +2922,7 @@ local program_fields = {
 
 function lake.add_program_option(options)
     options = deps_arg(options)
-    table.update(program_fields,table.set(options))
+    utils.append_table(program_fields,utils.set(options))
 end
 
 function check_options (args,fields,where)
@@ -3337,6 +3336,21 @@ setmetatable(ENV,{
 })
 
 IF = choose
+
+function L(t)
+    if type(t) ~= 'table' then
+        return lake.deps_arg(t)
+    end
+    local res,keys = {},{}
+    for k,v in pairs(t) do
+        append(keys,k)
+    end
+    table.sort(keys)
+    for _,k in ipairs(keys) do
+        list.extend(res,L(t[k]))
+    end
+    return res
+end
 
 function lake.compiler_version (cc)
     local text,major, minor, rev
