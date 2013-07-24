@@ -560,6 +560,70 @@ That looks even cleaner than the original Ruby example, due to the lightweight f
 
 You can name the Moonscript file `lakefile.moon`, and then the output will be `lakefile.lua` and be accepted directly by Lake.
 
+### Dependency-Based Programming with Objects
+
+New with 1.4 is the capability to use _objects_ as targets. To be acceptable as a target, an object must
+be a table with a `time` field which behaves like a timestamp, and have no array items.
+
+Here is a suitable 'class' definition for such an object:
+
+    -- dobject.lua
+    -- classic Lua OOP boilerplate
+    local TO = {}
+    TO.__index = TO
+    TO._NOW = 1
+    TO._objects = {} -- keep a list of these guys
+
+    -- objects can show themselves as a string
+    function TO:__tostring()
+        return "["..self.name..':'..self.time.."]"
+    end
+
+    -- they may have a method for updating - basically this is 'touch'
+    function TO:update()
+        print('updating '..tostring(self))
+        self.time = TO._NOW
+    end
+
+    -- by default, objects have time 0!
+    local function T(name,time)
+        local obj = setmetatable({name=name,time=time or 0},TO)
+        table.insert(TO._objects, obj)
+        return obj
+    end
+
+Given this class, we can do dependency-based programming.
+
+    -- lazy global object generation - unknown uppercase vars become target objects
+    setmetatable(_G,{
+        __index = function(self,key)
+            if key:match '^%u+$' then
+                local obj = T(key)
+                rawset(_G,key,obj)
+                return obj
+            end
+        end
+    })
+
+    local function touch(t)
+        t.target:update()
+    end
+
+    -- B is younger than A, so A is updated
+    -- (comment this out and nothing happens)
+    B.time = 1
+
+    tA = target(A, {B, C},touch)
+
+    -- which in turn forces action on D (but it is not updated)
+    tB = target(D, A, function(t)  -- could also have tA as dep..
+        print('D action!')
+        for o in list(TO._objects) do print(o) end
+    end)
+
+    default{ tB }
+
+
 ### How Lake is Configured
 
 The command Lake will load configuration files, if it can find them. It will first try load
@@ -1222,7 +1286,12 @@ Currently, only one such filter can be in-place for a given language object. (We
 the `CL` compiler output has to be filtered for dependency information to be extracted.
 `lake.output_filter` is a bonus that came from that basic functionality.)
 
-(Look at the example lakefile in `examples/errors` for a version that handles both compilers.)
+Look at the example lakefile in `examples/errors` for a version that handles both compilers.
+This organizes the filter as an installable plugin which can be fetched remotely with:
+
+    $ lake -install get:cpp.filter.lua
+
+In that more elaborate C++ example, I get 125 lines of raw output using mingw, which is filtered to 9 much shorter lines.
 
 ### Adding a New Language
 

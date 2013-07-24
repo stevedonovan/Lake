@@ -19,6 +19,7 @@ Lake version 1.4  A Lua-based Build Engine
     -j N run jobs in parallel where possible.
     -f FILE read a named lakefile
     -e EXPR evaluate a lakefile expression
+    -L MOD load a module lake.MOD first
     -l FILE build a shared library/DLL
     -lua FILE build a Lua C extension
     -p FILE build a program
@@ -1697,7 +1698,7 @@ local function powershell_download (pathname,url)
     return utils.execute(pscmd)
 end
 
-local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/files/'
+local canonical_lake_files = REMOTE_LAKE_URL or 'http://stevedonovan.github.com/lake/plugins'
 
 function lake.download (url,pathname)
     if not getter then
@@ -1737,7 +1738,7 @@ local function exists_lua(name) return exists(name..'.lua') end
 -- a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
 -- The .lua extension is not necessary and the file may be remote.
 function lake.install_plugin (parm)
-    if path.extension_of(parm) ~= 'lua' then parm = parm..'.lua'  end
+    if path.extension_of(parm) ~= '.lua' then parm = parm..'.lua'  end
     local fname = exists(parm)
     if not fname then
         if not lake.is_remote(parm) then  quit(parm..' not found!')
@@ -1748,15 +1749,13 @@ function lake.install_plugin (parm)
     end
     local name = path.basename(fname)
     local package,kind = name:match '([^.]+)%.(.+)%.'
-    if not package or not (kind == 'need' or kind == 'lang' or kind == 'lake') then
-        quit('no NAME.need,.lang or .lake file found ')
+    if not package then
+        quit('no NAME.KIND.lua file found ')
     end
     if kind=='need' then
         sub = '/lake/needs/'
-    elseif kind=='lang' then
-        sub = '/lake/lang/'
     else
-        sub = '/lake/'
+        sub = '/lake/'..kind..'/'
     end
     local dest = lake.home..sub..package..'.lua'
     -- convention is that plugins use quit() if they cannot load...
@@ -1923,6 +1922,8 @@ local function process_args()
                 no_synth_target = true
             elseif opt == 'f' then
                 lakefile = getarg()
+            elseif opt == 'L' then
+                require('lake.'..getarg())
             elseif opt == 'e' then
                 lakefile = file.temp_copy(getarg())
             elseif opt == 's' then
@@ -3337,20 +3338,26 @@ setmetatable(ENV,{
 
 IF = choose
 
-function L(t)
+local function L_impl(t)
     if type(t) ~= 'table' then
         return lake.deps_arg(t)
     end
-    local res,keys = {},{}
+    local res,indices = {},{}
     for k,v in pairs(t) do
-        append(keys,k)
+        if type(k) ~= 'number' then -- just copy string keys
+            res[k] = v
+        else
+            append(indices,k)
+        end
     end
-    table.sort(keys)
-    for _,k in ipairs(keys) do
-        list.extend(res,L(t[k]))
+    table.sort(indices) -- voila, hole free array!
+    for _,k in ipairs(indices) do
+        list.extend(res,L_impl(t[k]))
     end
     return res
 end
+
+L = L_impl
 
 function lake.compiler_version (cc)
     local text,major, minor, rev

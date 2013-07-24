@@ -9,6 +9,7 @@ function warning(reason,...)  end
 function quit(reason,...) end
 
 --- Pseudo-table for getting and setting environment variables.
+-- Note that _setting_ environment variables requires either winapi or luaposix.
 -- @table ENV
 
 --- return either `v1` or `v2` depending on `cond`.
@@ -21,7 +22,7 @@ function pick(a,b) end
 --- expands sublists and removes holes.
 -- Any strings delimited with spaces or commas are also split into lists using `lake.deps_arg`.
 -- @usage L'one two' == {'one','two'}
--- @usage L{IF(X,'a'),IF(Y,{'one','two'}} == {'one','two'} if X is true, Y is false
+-- @usage L{IF(X,'a'),IF(Y,{'one','two'}} == {'one','two'} if X is false, Y is true
 function L(t) end
 
 --- for debug purposes: dump out a table with optional message
