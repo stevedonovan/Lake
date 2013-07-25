@@ -815,11 +815,12 @@ function list.parm_concat(ls,istart)
     return s
 end
 
---end_of_libs---------------------------------------------
-
-local job_execute, jobs_clear, found_threads, winapi, posix
+local found_threads, winapi, posix
 if Windows then
     found_threads, winapi = pcall(require, 'winapi')
+    if found_threads then
+        utils.sleep = winapi.sleep
+    end
 else
     found_threads, posix = pcall(require, 'posix')
 	if found_threads and posix.clock_gettime then
@@ -827,8 +828,17 @@ else
 			local secs,nsec = posix.clock_gettime()
 			return secs + nsec/1e9
 		end
+        function utils.sleep (msec)
+            local sec = math.floor(sec/1000)
+            msec = msec - 1000*sec
+            posix.nanosleep(sec,1e6*msec)
+        end
 	end
 end
+
+--end_of_libs---------------------------------------------
+
+local job_execute, jobs_clear
 
 local function command_line (cmd)
     local tmpfile,cmdline = file.temp()
@@ -1694,7 +1704,6 @@ local function powershell_download (pathname,url)
     (new-object System.Net.WebClient).DownloadFile($url,$path)
     ]]
     file.write('tmp.ps1',templ:format(url,pathname))
-    os.execute 'cat tmp.ps1'
     return utils.execute(pscmd)
 end
 

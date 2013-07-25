@@ -1291,7 +1291,8 @@ This organizes the filter as an installable plugin which can be fetched remotely
 
     $ lake -install get:cpp.filter.lua
 
-In that more elaborate C++ example, I get 125 lines of raw output using mingw, which is filtered to 9 much shorter lines.
+In that more elaborate C++ example, I get 125 lines of raw output using mingw, which is filtered
+to 9 much shorter lines.
 
 ### Adding a New Language
 
@@ -1605,7 +1606,27 @@ into directories, if the third parameter is `true`.
 Note that all of these libraries are available when a script is invoked with `lake script.lua`.
 
 You may use `lake` as a regular Lua library using `require` if a copy (or preferrably a symlink) called `lake.lua` is
-on your Lua module path.
+on your Lua module path. The default operation using `lakefile` is equivalent to the following script:
+
+    require 'lake' --> assuming it's on the module path
+    dofile 'lakefile'
+    lake.go()
+
+By using Lake in this way, you can control when the dependencies are resolved.
+Have a look at `examples/objects.lua`, which is a script version of `examples/objects/lakefile`.
+It ends with these lines:
+
+    print 'go 1'
+    lake.go()
+    print 'go 2'
+    B.time = 11
+    lake.go()
+
+`utils.sleep` is available in a full Lake installation, so you can pause your script. It's possible
+to recheck on file changes. On Windows, you
+can use [winapi.watch_for_file_changes](http://stevedonovan.github.io/winapi/api.html#watch_for_file_changes);
+there is no POSIX equivalent, but on Linux you can use [linotify](https://github.com/hoelzro/linotify) which
+is available through LuaRocks.
 
 The `list` table provides some useful functions for operating on array-like tables.  It is callable,
 and acts as an iterator:

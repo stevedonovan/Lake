@@ -154,8 +154,12 @@ function path.mkdir (p) end
 -- @section utils
 
 --- wall clock time since start of session.
--- (This requires `luaposix` on Unix systems)
+-- (This requires `posix` on Unix systems)
 function utils.clock () end
+
+--- pause the process for a given number of millisecs.
+-- (Requires `posix' or `winapi`)
+function utils.sleep(msec) end
 
 --- split a string using a delimiter (default spaces).
 function utils.split(s,re) end
