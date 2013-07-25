@@ -638,6 +638,8 @@ function utils.remove(items,single)
     end
 end
 
+local exec
+
 function utils.remove_files (mask)
     local cmd
     if Windows then
