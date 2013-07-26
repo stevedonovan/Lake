@@ -831,7 +831,7 @@ else
 			return secs + nsec/1e9
 		end
         function utils.sleep (msec)
-            local sec = math.floor(sec/1000)
+            local sec = math.floor(msec/1000)
             msec = msec - 1000*sec
             posix.nanosleep(sec,1e6*msec)
         end
