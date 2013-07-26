@@ -3231,6 +3231,8 @@ local function _program(ptype,name,deps,lang)
     if src then
         local ext = args.ext or lang.ext
         local root
+        -- hack: ext is '*' in a rule means that the output extension equals the input extension
+        if ext == '*' then ext = '' end
         if args.recurse then
             local first = type(src) == 'table' and src[1] or src
             root = dirname(first,true)
