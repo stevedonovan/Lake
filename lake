@@ -421,16 +421,23 @@ function path.extension_of(path)
 end
 local extension_of = path.extension_of
 
+local user_home = NEW_HOME
+
+local function find_user_home()
+    if not user_home then
+        user_home = env 'HOME'
+        if not user_home then -- has to be Windows
+            user_home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
+        elseif ENV.USER == 'root' then
+            user_home = utils.shell("echo ~"..ENV.SUDO_USER)
+        end
+    end
+end
+
 function path.expanduser(path)
     if path:sub(1,1) == '~' then
-        local home = NEW_HOME
-        if not home then
-            home = env 'HOME'
-            if not home then -- has to be Windows
-                home = env 'USERPROFILE' or (env 'HOMEDRIVE' .. env 'HOMEPATH')
-            end
-        end
-        return home..path:sub(2)
+        find_user_home()    
+        return user_home..path:sub(2)
     else
         return path
     end
