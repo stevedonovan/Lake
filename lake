@@ -436,7 +436,7 @@ end
 
 function path.expanduser(path)
     if path:sub(1,1) == '~' then
-        find_user_home()    
+        find_user_home()
         return user_home..path:sub(2)
     else
         return path
@@ -1543,7 +1543,7 @@ local function fire(t)
         deps = {}
         for i = 1,#odeps do
             deps[i] = t.cdir and relative_to(odeps[i],t.cdir) or odeps[i]
-            deps[i] = quote_if_necessary(odeps[i])
+            deps[i] = quote_if_necessary(deps[i])
         end
         DEPENDS = table.concat(deps,' ')
     end
@@ -2419,7 +2419,7 @@ function lake.set_flags(parms)
                     end
                     if mname then
                         mname = mname:gsub('%.','_')
-                        append(deps,' /EXPORT:luaopen_'..mname)
+                        append(deps,'/EXPORT:luaopen_'..mname)
                     end
                 end
             end
