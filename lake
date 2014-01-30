@@ -2607,7 +2607,7 @@ local function get_extra_needs (name,args,static)
 end
 
 local function examine_config_vars(package,subtype)
-    -- @doc [needs] If we're trying to match a need 'frodo', then we
+    -- @needs If we're trying to match a need 'frodo', then we
     -- generate FRODO_INCLUDE_DIR, FRODO_LIB_DIR, FRODO_LIBS, FRODO_DIR
     -- and look them up globally.  Not all of these are needed. For instance, if only
     -- FRODO_DIR is specified then Lake will try FRODO_DIR/include and FRODO_DIR/lib,
@@ -2615,6 +2615,8 @@ local function examine_config_vars(package,subtype)
     -- On Unix, a C/C++ need generally needs include and lib dirs, plus library name if
     -- it isn't identical to the need name. However a lib dir is only essential for Windows,
     -- which has no convenient system-wide lib directory.
+    --
+    -- A need may insist on a certain language using FRODO_LANG
     --
     -- You may also directly define FRODO_CFLAGS and FRODO_LFLAGS to provide
     -- arbitrary compile/link flags; in this case the directory checks are skipped
@@ -2629,9 +2631,10 @@ local function examine_config_vars(package,subtype)
     local dir_v = upack..'_DIR'
     local cflags_v = upack..'_CFLAGS'
     local lflags_v = upack..'_LFLAGS'
+    local lang_v = upack..'_LANG'
 
-    local incdir,libdir,libs,libss,dir,cflags,lflags =
-        _G[incdir_v],_G[libdir_v],_G[libs_v],_G[libss_v],_G[dir_v],_G[cflags_v],_G[lflags_v]
+    local incdir,libdir,libs,libss,dir,cflags,lflags,lang =
+        _G[incdir_v],_G[libdir_v],_G[libs_v],_G[libss_v],_G[dir_v],_G[cflags_v],_G[lflags_v],_G[lang_v]
 
     local function checkdir(val,var,default)
         local none = val == nil
@@ -2672,7 +2675,8 @@ local function examine_config_vars(package,subtype)
             libs = concat_arg('',libs,'_static ')
         end
     end
-    local res = {incdir = incdir, libdir = libdir, libs = libs, flags = cflags, libflags = lflags}
+    local res = {incdir = incdir, libdir = libdir, libs = libs, flags = cflags,
+        libflags = lflags, lang = lang}
     if not next(res) then -- we found nuffink...
         res = nil
     end
@@ -2783,6 +2787,8 @@ local function update_needs(ptype,args)
                 append_to_field(args,'libdir',res.libdir)
                 if res.libflags then args.libflags = concat_str(args.libflags,res.libflags,true) end
                 if res.flags then args.flags = concat_str(args.flags,res.flags,true) end
+                -- @needs a need may override the default language, e.g insist on C99
+                if res.lang then args.lang = res.lang end
             end
         else
             if PLAT ~= 'Windows' then
@@ -2979,6 +2985,22 @@ local function _program(ptype,name,deps,lang)
     if type(name) == 'table' then
         args = name
         check_options(args,program_fields,'program')
+        -- @needs specifying libraries etc by 'needs', not explicitly
+        if args.needs or NEEDS then
+            -- @needs extra needs for all compile targets can be set with the NEEDS global.
+            append_to_field(args,'needs',NEEDS)
+            -- @lang a language may take over needs processing by defining process_needs()
+            if lang.process_needs then
+                lang.process_needs(ptype,args)
+            else
+                update_needs(ptype,args)
+            end
+        end
+        -- @lang @needs default language can be overriden, explicitly or through a need
+        if args.lang then
+            lang = _G[args.lang]
+            if lang == nil then quit("unknown language: "..args.lang) end
+        end
         --- how default values can be set
         append_table(args,lang.defaults,true)
         append_table(args,args.args,true)
@@ -3020,17 +3042,6 @@ local function _program(ptype,name,deps,lang)
         end
         concat_if_table(args,'flags')
         concat_if_table(args,'libflags')
-        -- @needs specifying libraries etc by 'needs', not explicitly
-        if args.needs or NEEDS then
-            -- @needs extra needs for all compile targets can be set with the NEEDS global.
-            append_to_field(args,'needs',NEEDS)
-            -- @lang a language may take over needs processing by defining process_needs()
-            if lang.process_needs then
-                lang.process_needs(ptype,args)
-            else
-                update_needs(ptype,args)
-            end
-        end
         if args.libdir then
             libs = libs..concat_arg(baselang.LIBDIR,args.libdir,' ')
         end
