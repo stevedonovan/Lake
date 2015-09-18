@@ -3006,7 +3006,7 @@ local function _program(ptype,name,deps,lang)
         append_table(args,args.args,true)
         --- the name can be the first element of the args table;
         --- the rest of the array will be considered as dependencies.
-        args.name = args.name or args[1]
+        if ptype ~= "group" then args.name = args.name or args[1] end;
         args.deps = args.deps or tail(args)
         args.debug = args.debug or DEBUG
         args.cdir = args.cdir or args.compile_dir
@@ -3265,6 +3265,16 @@ local function _program(ptype,name,deps,lang)
 
         if cr then
             for f in list_(src) do cr:add_target(f,pcr,root) end
+            -- If a group has a given target name it is used as a prefix for the output file names.
+            -- This is usefull for compiling a source more than 1 time with different result files
+            -- and you want to store the results in the same folder.
+            if ptype == "group" and args[1] then
+              local patt = "([^%"..DIRSEP.."]+)$"
+              local repl = args[1].."_%1"
+              for i = 1, #cr.targets do
+                cr.targets[i].target = cr.targets[i].target:gsub(patt, repl)
+              end;
+            end
         else
             -- for languages where compilation occurs at 'link' stage (e.g. C#)
             t.src = src
