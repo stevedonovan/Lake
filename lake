@@ -84,7 +84,7 @@ function pick(a,b)
     if a ~= nil then return a else return b end
 end
 
-file = {ext='*'}
+file = {ext='*', M32=""}
 COPY = choose(Windows,'copy','cp')
 file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
 
@@ -2348,6 +2348,7 @@ function lake.set_flags(parms)
 
         wresource.compile = 'windres $(CFLAGS) $(INPUT) $(TARGET)'
         wresource.obj_ext='.o'
+        wresource.M32     = "-F pe-i386"
 
     else -- Microsoft command-line compiler
         MSVC = true
