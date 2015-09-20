@@ -285,13 +285,23 @@ end
 local isabs = path.isabs
 
 function path.abs(...)
-    local args = {...}
-    if isabs(args[1]) then return args[1] end
+    local p = {...}
+    if isabs(p[1]) then return p[1] end
     if not PWD then
         update_pwd()
     end
-    table.insert(args,1,PWD:sub(1,-2))
-    return table.concat(args,DIRSEP)
+    table.insert(p,1,PWD:sub(1,-2))
+    p = canonical_path(table.concat(p, DIRSEP))
+    if Windows then
+      while p:find("\\[^%.\\]+\\%.%.\\") do
+        p = p:gsub("\\[^%.\\]+\\%.%.\\", "\\")
+      end
+    else
+      while p:find("/[^%./]+/%.%./") do
+        p = p:gsub("/[^%./]+/%.%./", "/")
+      end
+    end
+    return p;
 end
 
 local function quote_if_necessary (file)
