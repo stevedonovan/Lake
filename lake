@@ -2084,8 +2084,17 @@ end
 
 -- recursively invoke lake at the given @path with the arguments @args
 function lake_(path,args)
-    args = args or ''
-    exec('lake -d "'..path..'"  '..args,true)
+    --args = args or ''
+    --exec('lake -d "'..path..'"  '..args,true)
+    local t = all_targets_list -- push targets
+    all_targets_list = {}
+    change_dir(path)
+    local lakefile = exists 'lakefile' or exists 'lakefile.lua'
+    if not lakefile then quit("'lakefile' does not exist") end;
+    safe_dofile(lakefile);
+    lake.go();
+    change_dir("<");
+    all_targets_list = t; -- pop targets
 end
 
 utils.make_callable(lake,lake_)
