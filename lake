@@ -290,7 +290,7 @@ function path.abs(...)
       p = p[1]
     else  
       if not PWD then update_pwd() end
-      table.insert(p,1,PWD:sub(1,-2))
+      table.insert(p,1,PWD)
       p = table.concat(p, DIRSEP)
     end
     p = canonical_path(p)
@@ -1818,7 +1818,7 @@ local synth_target,synth_args_index
 function update_pwd ()
     local dir = lfs.currentdir()
     if Windows then dir = dir:lower() end -- canonical form
-    PWD = dir..DIRSEP
+    PWD = dir
 end
 
 local dir_stack = {}
