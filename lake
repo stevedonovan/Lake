@@ -278,8 +278,10 @@ end
 local isfile = path.isfile
 
 function path.isabs(path)
-    if Windows then return path:find '^"*%a:' ~= nil
-    else return path:find '^/' ~= nil
+    if Windows then 
+      return (path:find '^"*%a:' or path:find '^"*[\\/]') ~= nil
+    else 
+      return path:find '^/' ~= nil
     end
 end
 local isabs = path.isabs
@@ -298,10 +300,12 @@ function path.abs(...)
       while p:find("\\[^%.\\]+\\%.%.\\") do
         p = p:gsub("\\[^%.\\]+\\%.%.\\", "\\")
       end
+      p = p:gsub("\\[^%.\\]+\\%.%.$", "")
     else
       while p:find("/[^%./]+/%.%./") do
         p = p:gsub("/[^%./]+/%.%./", "/")
       end
+      p = p:gsub("/[^%./]+/%.%.$", "")
     end
     return p;
 end
@@ -2844,7 +2848,7 @@ lake.define_pkg_need('gtk','gtk+-2.0')
 lake.define_pkg_need('gthread','gthread-2.0')
 
 define_need('windows',function()
-    return { libs = 'user32 kernel32 gdi32 ole32 advapi32 shell32 imm32  uuid comctl32 comdlg32'}
+    return { libs = 'kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 uuid oleaut32 ole32 comctl32'}
 end)
 
 define_need('unicode',function()
@@ -2939,7 +2943,6 @@ end
 define_need('lua',update_lua_flags)
 
 ----- end of handling needs -----------
-
 
 local program_fields = {
     name=true, -- name of target (or first value of table)
