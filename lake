@@ -286,12 +286,14 @@ local isabs = path.isabs
 
 function path.abs(...)
     local p = {...}
-    if isabs(p[1]) then return p[1] end
-    if not PWD then
-        update_pwd()
+    if isabs(p[1]) then 
+      p = p[1]
+    else  
+      if not PWD then update_pwd() end
+      table.insert(p,1,PWD:sub(1,-2))
+      p = table.concat(p, DIRSEP)
     end
-    table.insert(p,1,PWD:sub(1,-2))
-    p = canonical_path(table.concat(p, DIRSEP))
+    p = canonical_path(p)
     if Windows then
       while p:find("\\[^%.\\]+\\%.%.\\") do
         p = p:gsub("\\[^%.\\]+\\%.%.\\", "\\")
@@ -2083,11 +2085,16 @@ function finalize(reason)
 end
 
 -- recursively invoke lake at the given @path with the arguments @args
-function lake_(path,args)
-    --args = args or ''
-    --exec('lake -d "'..path..'"  '..args,true)
+-- if args is given, run the new script in a new console session.
+-- otherwise run the script without creating a new session.
+function lake_(path, args)
+  if args then
+    args = args or ''
+    exec('lake -d "'..path..'"  '..args, true)
+  else
     local t = all_targets_list -- push targets
     all_targets_list = {}
+    LAKELEVEL = LAKELEVEL and (LAKELEVEL + 1) or 1;
     change_dir(path)
     local lakefile = exists 'lakefile' or exists 'lakefile.lua'
     if not lakefile then quit("'lakefile' does not exist") end;
@@ -2095,6 +2102,8 @@ function lake_(path,args)
     lake.go();
     change_dir("<");
     all_targets_list = t; -- pop targets
+    LAKELEVEL = LAKELEVEL - 1;
+  end
 end
 
 utils.make_callable(lake,lake_)
@@ -2102,7 +2111,7 @@ utils.make_callable(lake,lake_)
 function lake.go()
 
     if #all_targets_list == 0 then
-        quit('no targets defined')
+        quit(LAKELEVEL and "done." or 'no targets defined')
     end
 
     for tt in list_(all_targets_list) do
