@@ -84,7 +84,7 @@ function pick(a,b)
     if a ~= nil then return a else return b end
 end
 
-file = {ext='*'}
+file = {ext='*', M32=""}
 COPY = choose(Windows,'copy','cp')
 file.compile = '$(COPY) $(DEPENDS) $(TARGET)'
 
@@ -112,13 +112,13 @@ end
 
 local filetime = file.time
 
-function file.generate_target(r,tname,root)
+function file.generate_target(r, tname, root)
     local odir = r.output_dir
     if root and odir then
         tname = tname:sub(#root+2)
         local d = path.dirname(path.join(odir,tname))
         if not path.isdir(d) then
-            path.mkdir(d)
+          path.mkdir(d)
         end
         return tname
     end
@@ -278,20 +278,36 @@ end
 local isfile = path.isfile
 
 function path.isabs(path)
-    if Windows then return path:find '^"*%a:' ~= nil
-    else return path:find '^/' ~= nil
+    if Windows then 
+      return (path:find '^"*%a:' or path:find '^"*[\\/]') ~= nil
+    else 
+      return path:find '^/' ~= nil
     end
 end
 local isabs = path.isabs
 
 function path.abs(...)
-    local args = {...}
-    if isabs(args[1]) then return args[1] end
-    if not PWD then
-        update_pwd()
+    local p = {...}
+    if isabs(p[1]) then 
+      p = p[1]
+    else  
+      if not PWD then update_pwd() end
+      table.insert(p,1,PWD)
+      p = table.concat(p, DIRSEP)
     end
-    table.insert(args,1,PWD:sub(1,-2))
-    return table.concat(args,DIRSEP)
+    p = canonical_path(p)
+    if Windows then
+      while p:find("\\[^%.\\]+\\%.%.\\") do
+        p = p:gsub("\\[^%.\\]+\\%.%.\\", "\\")
+      end
+      p = p:gsub("\\[^%.\\]+\\%.%.$", "")
+    else
+      while p:find("/[^%./]+/%.%./") do
+        p = p:gsub("/[^%./]+/%.%./", "/")
+      end
+      p = p:gsub("/[^%./]+/%.%.$", "")
+    end
+    return p;
 end
 
 local function quote_if_necessary (file)
@@ -403,21 +419,21 @@ end
 local splitext = path.splitext
 
 function path.dirname(P,strict)
-    if isdir(P) then return P end
-    local p1,p2 = splitpath(P)
-    return p1
+  if isdir(P) then return P end
+  local p1, p2 = splitpath(P)
+  return p1
 end
 local dirname = path.dirname
 
 function path.basename(path)
-    local p1,p2 = splitpath(path)
-    return p2
+  local p1, p2 = splitpath(path)
+  return p2
 end
 local basename = path.basename
 
 function path.extension_of(path)
-    local p1,p2 = splitext(path)
-    return p2
+  local p1, p2 = splitext(path)
+  return p2
 end
 local extension_of = path.extension_of
 
@@ -849,71 +865,66 @@ end
 
 local job_execute, jobs_clear
 
-local function command_line (cmd)
+local function command_line(cmd)
     local tmpfile,cmdline = file.temp()
     if cmd:match '>%s*%S+$' then
         cmdline = cmd..' 2> '..tmpfile
     else
         cmdline = cmd..' > '..tmpfile..' 2>&1'
     end
-    return cmdline,tmpfile
+    return cmdline, tmpfile
 end
 
-local function execute_wrapper (cmd,t,callback)
-    local cmdline,tmpfile = command_line(cmd)
-    local ok,code = utils.execute(cmdline)
-    local inf = io.open(tmpfile,'r')
-    callback(ok,code,inf)
-    inf:close()
-    os.remove(tmpfile)
+local function execute_wrapper(cmd,t,callback)
+  local cmdline,tmpfile = command_line(cmd)
+  local ok,code = utils.execute(cmdline)
+  local inf = io.open(tmpfile,'r')
+  callback(ok,code,inf)
+  inf:close()
+  os.remove(tmpfile)
 end
 
 local n_threads = 1
 
 if found_threads then
-
-    local processes,outputs = {},{}
+    local processes, outputs = {}, {}
     local spawn, wait
     if winapi then
         local comspec = env('COMSPEC')..' /c '
-
         function spawn(cmd)
-            return winapi.spawn_process(comspec..cmd)
+          return winapi.spawn_process(comspec..cmd)
         end
-
         function wait(ps)
-            local idx,err = winapi.wait_for_processes(ps,false)
-            if err then return nil, err end
-            local p = processes[idx]
-            return idx,p:get_exit_code(),err
+          local idx, err = winapi.wait_for_processes(ps, false)
+          if err then return nil, err end
+          local p = processes[idx]
+          return idx, p:get_exit_code(), err
         end
     else
         function spawn(cmd)
-            local cpid = posix.fork()
-            if cpid == 0 then
-                if posix.exec('/bin/sh','-c',cmd) == -1 then
-                    local msg,code = posix.errno()
-                    os.exit(code)
-                end
-            else
-                return cpid
+          local cpid = posix.fork()
+          if cpid == 0 then
+            if posix.exec('/bin/sh','-c',cmd) == -1 then
+              local msg,code = posix.errno()
+              os.exit(code)
             end
+          else
+            return cpid
+          end
         end
-
         function wait(ps)
             local pid,status,code = posix.wait(-1)
-            if not pid then return nil,nil,code end
-            local idx = index_list(ps,pid)
-            return idx,code
+            if not pid then return nil, nil, code end
+            local idx = index_list(ps, pid)
+            return idx, code
         end
     end
-
     local function jobs_wait()
         if #processes == 0 then return end
         local idx,code,err = wait(processes)
         if err then return nil, err end
         local item, p = outputs[idx], processes[idx]
-        local inf,err = io.open(item.tmp,'r')
+        local inf,err = io.open(item.tmp, 'r')
         item.callback(code == 0, code, inf)
         if item.read then item.read:close() end
         inf:close()
@@ -922,16 +933,13 @@ if found_threads then
         end
         os.remove(item.tmp)
 
-        table.remove(processes,idx)
-        table.remove(outputs,idx)
+        table.remove(processes, idx)
+        table.remove(outputs, idx)
     end
-
     function jobs_clear()
         while #processes > 0 do jobs_wait() end
     end
-
     local current_rule
-
     function job_execute (cmd,t,callback)
         if n_threads < 2 then
             execute_wrapper(cmd,t,callback)
@@ -953,16 +961,15 @@ if found_threads then
             end
         end
     end
-
 else
-    job_execute = execute_wrapper
-    jobs_clear = function() end
+  job_execute = execute_wrapper
+  jobs_clear = function() end
 end
 
 
 -- for debug purposes: dump out a table
 function dump(ls,msg)
-    log ('<<',msg or '')
+    log ('<<', msg or '')
     if type(ls) == 'table' then
         for i,v in pairs(ls) do
             log(i,v)
@@ -980,14 +987,14 @@ local msvc_include_cache = {}
 local function within_msvc_include_path (file)
     if not msvc_includes then
         local include = env 'INCLUDE':gsub(';$',''):lower()
-        msvc_includes = split(include,';')
+        msvc_includes = split(include, ';')
     end
     local res = msvc_include_cache[file]
     if res ~= nil then return res end
     local dir = splitpath(file):lower()
     for d in list_(msvc_includes) do
-        local i1,i2 = dir:find(d,1,true)
-        if i1==1 and i2 == #d then
+        local i1, i2 = dir:find(d, 1, true)
+        if i1 == 1 and i2 == #d then
             res = true
             break
         end
@@ -997,12 +1004,12 @@ local function within_msvc_include_path (file)
 end
 
 
-local function concat(s1,s2) return (s1 or '')..' '..s2 end
+local function concat(s1, s2) return (s1 or '')..' '..s2 end
 
-local function concat_if_table(t,field)
+local function concat_if_table(t, field)
     local val = t[field]
     if type(val) == 'table' then
-        t[field] = table.concat(val,' ')
+        t[field] = table.concat(val, ' ')
     end
 end
 
@@ -1018,13 +1025,13 @@ CFLAGS = ''
 local function inherits_from (c)
     local mt = {__index = c}
     return function(t)
-        return setmetatable(t,mt)
+        return setmetatable(t, mt)
     end
 end
 
 local function appender ()
     local t = {}
-    utils.make_callable(t,function(a)
+    utils.make_callable(t, function(a)
         check_options(a)
         append_table(t,a)
     end)
@@ -1071,7 +1078,7 @@ local extensions = {
 
 local deps_arg, concat_arg, isrule, istarget
 
-function lake.register(lang,extra)
+function lake.register(lang, extra)
     extensions[lang.ext] = lang
     if extra then
         for e in list_(deps_arg(extra)) do
@@ -1082,7 +1089,7 @@ end
 
 -- @parms any <var>=<value> pair means set the global variable <var> to the <value>, as a string.
 local function process_var_pair(a)
-    local var,val = utils.split2(a,'=')
+    local var, val = utils.split2(a, '=')
     if var then
         _G[var] = val
         return true
@@ -1091,7 +1098,7 @@ end
 
 local function rebase (deps,base)
     if base then
-        for i = 1,#deps do
+        for i = 1, #deps do
             deps[i] = join(base,deps[i])
         end
     end
@@ -1107,7 +1114,7 @@ local get_target_list
 -- allowed.
 --
 -- Third argument determines whether the result must be reduced to strings.
-function deps_arg(deps,base,returns_strings)
+function deps_arg(deps, base, returns_strings)
     local T = type(deps)
     if T=='table' and not is_simple_list(deps) then
         if returns_strings and isrule(deps) then return deps:get_targets()
@@ -1117,18 +1124,18 @@ function deps_arg(deps,base,returns_strings)
                 tl = {deps}
             end
             if tl then
-                return returns_strings and column_list(tl,'target') or tl
+                return returns_strings and column_list(tl, 'target') or tl
             else
                 return {deps}
             end
         end
     end
     if T=='string' then
-        return rebase(split_list(deps),base)
+        return rebase(split_list(deps), base)
     elseif T=='table' then
         local res = {}
         for i = 1,#deps do
-            append_list(res,deps_arg(deps[i],base,returns_strings))
+            append_list(res, deps_arg(deps[i], base, returns_strings))
         end
         deps = res
     end
@@ -1140,20 +1147,20 @@ lake.deps_arg = deps_arg
 -- expand_args() goes one step further than deps_arg(); it will expand a wildcard expression into a list of files
 -- as well as handling lists as strings. If the argument is a table, it will attempt
 -- to expand each string - e.g. {'a','b c'} => {'a','b','c'}
-function expand_args(src,ext,recurse,base)
+function expand_args(src, ext, recurse, base)
     local items = deps_arg(src,base,true)
     local res = {}
     for i,item in ipairs(items) do
         if type(item) == 'string' then
             if ext and isdir(item) and not isfile(item..ext) then
-                item = join(item,'*') -- directory is an implicit wildcard
+                item = join(item, '*') -- directory is an implicit wildcard
             end
             if item:find '%*' then
                 if item:find '%*$' then item = item..(ext or '*') end
-                append_list(res,files_from_mask(item,recurse))
+                append_list(res,files_from_mask(item, recurse))
             else
-                if ext and extension_of(item)=='' then item = item..ext end
-                append(res,item)
+                if ext and extension_of(item) == '' then item = item..ext end
+                append(res, item)
             end
         end
     end
@@ -1172,8 +1179,8 @@ function istarget (t)
     return type(t) == 'table' and getmetatable(t) == tmt
 end
 
-function tmt:__tostring ()
-    return 'target: '..self.target..(self.rule and tostring(self.rule) or '')
+function tmt:___tostring()
+    return 'target: '..self.target.." "..(self.rule and tostring(self.rule) or '')
 end
 
 local function remove_quotes (ls)
@@ -1230,19 +1237,19 @@ rt.__index = rt
 -- create a rule object, mapping input files with extension @in_ext to
 -- output files with extension @out_ext, using an action @cmd
 -- Most of the customization of rules comes from setting a lang field.
-function rule(out_ext,in_ext,cmd,label)
-    local r = {}
-    r.in_ext = in_ext
-    r.out_ext = out_ext
-    r.cmd = cmd
-    r.targets = {}
-    r.label = label
-    r.depends_on = rt.depends_on
-    setmetatable(r,rt)
-    return r
+function rule(out_ext, in_ext, cmd, label)
+  local r = {}
+  r.in_ext = in_ext
+  r.out_ext = out_ext
+  r.cmd = cmd
+  r.targets = {}
+  r.label = label
+  r.depends_on = rt.depends_on
+  setmetatable(r, rt)
+  return r
 end
 
-function rt:__tostring ()
+function rt:___tostring ()
     return 'rule: '..(self.label or self.cmd)..' ('..#self.targets..')'
 end
 
@@ -1410,7 +1417,6 @@ function deps_from_d_file(fname)
     return deps
 end
 
-
 function get_target_list (t)
     if type(t) == 'table' then
         if t.target_list then return t.target_list end
@@ -1456,7 +1462,7 @@ local basic_print
 -- these won't be initially subsituted
 local basic_variables = {INPUT=true,TARGET=true,DEPENDS=true,LIBS=true,CFLAGS=true,SRC=true}
 
-function exec(s,dont_fail,t)
+function exec(s, dont_fail, t)
     local cmd = subst(s)
     if basic_print and t then
         log('built '..t.target)
@@ -1480,17 +1486,17 @@ local function nop (x)
     return x
 end
 
-local current_rule,first_target,combined_targets = nil,nil,{}
+local current_rule, first_target, combined_targets = nil, nil, {}
 
 local function relative_to (rpath,bpath)
-    rpath = rpath:gsub('\\','/')
-    local i1,i2 = rpath:find(bpath)
-    if i1 == 1 then
-        rpath = rpath:sub(i2+2)
-    else
-        rpath = '../../'..rpath
-    end
-    return rpath
+  rpath = rpath:gsub('\\','/')
+  local i1,i2 = rpath:find(bpath)
+  if i1 == 1 then
+    rpath = rpath:sub(i2+2)
+  else
+    rpath = '../../'..rpath
+  end
+  return rpath
 end
 
 local function fire(t)
@@ -1629,16 +1635,16 @@ end
 
 -- flattens out the list of dependencies
 local function deps_list (targets)
-    deps = {}
-    for target in list_(targets) do
-        target = get_deps(target)
-        if type(target) == 'string' or is_object(target) then
-            append(deps,target)
-        else
-            append_list(deps,target)
-        end
+  deps = {}
+  for target in list_(targets) do
+    target = get_deps(target)
+    if type(target) == 'string' or is_object(target) then
+      append(deps,target)
+    else
+      append_list(deps,target)
     end
-    return deps
+  end
+  return deps
 end
 
 function get_dependencies (deps)
@@ -1699,7 +1705,7 @@ local function expand_dependencies(t)
     t.expanded = true
 
     for dfile in list_(t.deps) do
-        expand_dependencies (target_from_file(dfile))
+        expand_dependencies(target_from_file(dfile))
     end
 end
 
@@ -1756,74 +1762,74 @@ local function exists_lua(name) return exists(name..'.lua') end
 -- a language like 'boo.lang.lua'; general packages are 'foo.lake.lua'
 -- The .lua extension is not necessary and the file may be remote.
 function lake.install_plugin (parm)
-    if path.extension_of(parm) ~= '.lua' then parm = parm..'.lua'  end
-    local fname = exists(parm)
-    if not fname then
-        if not lake.is_remote(parm) then  quit(parm..' not found!')
-        else
-            fname = lake.download(parm)
-            if not fname then quit(parm..' unable to download') end
-        end
-    end
-    local name = path.basename(fname)
-    local package,kind = name:match '([^.]+)%.(.+)%.'
-    if not package then
-        quit('no NAME.KIND.lua file found ')
-    end
-    if kind=='need' then
-        sub = '/lake/needs/'
+  if path.extension_of(parm) ~= '.lua' then parm = parm..'.lua'  end
+  local fname = exists(parm)
+  if not fname then
+    if not lake.is_remote(parm) then  quit(parm..' not found!')
     else
-        sub = '/lake/'..kind..'/'
+      fname = lake.download(parm)
+      if not fname then quit(parm..' unable to download') end
     end
-    local dest = lake.home..sub..package..'.lua'
-    -- convention is that plugins use quit() if they cannot load...
-    dofile (fname)
-    -- so if we get here we're ready to roll
-    file.copy(fname, dest,true)
-    if kind == 'lang' then
-        -- lang packages are special since they are available
-        -- without explicit require in lakefiles.
-        -- So have to patch the config file to insert the needed require.
-        local config = join(lake.home,'config.lua')
-        local contents = {}
-        local req = "require 'lake.lang."..package.."'"
-        local found
-        if exists(config) then
-            for line in io.lines(config) do
-                append(contents,line)
-                if line == req then found = true end
-            end
-        end
-        if not found then
-            append(contents,req)
-            file.write(config,table.concat(contents,'\n')..'\n')
-        end
+  end
+  local name = path.basename(fname)
+  local package,kind = name:match '([^.]+)%.(.+)%.'
+  if not package then
+    quit('no NAME.KIND.lua file found ')
+  end
+  if kind=='need' then
+    sub = '/lake/needs/'
+  else
+    sub = '/lake/'..kind..'/'
+  end
+  local dest = lake.home..sub..package..'.lua'
+  -- convention is that plugins use quit() if they cannot load...
+  dofile (fname)
+  -- so if we get here we're ready to roll
+  file.copy(fname, dest,true)
+  if kind == 'lang' then
+    -- lang packages are special since they are available
+    -- without explicit require in lakefiles.
+    -- So have to patch the config file to insert the needed require.
+    local config = join(lake.home,'config.lua')
+    local contents = {}
+    local req = "require 'lake.lang."..package.."'"
+    local found
+    if exists(config) then
+      for line in io.lines(config) do
+        append(contents,line)
+        if line == req then found = true end
+      end
     end
-end
+    if not found then
+      append(contents,req)
+      file.write(config,table.concat(contents,'\n')..'\n')
+    end
+  end
+end;
 
 local synth_target,synth_args_index
 
 function update_pwd ()
-    local dir = lfs.currentdir()
-    if Windows then dir = dir:lower() end -- canonical form
-    PWD = dir..DIRSEP
+  local dir = lfs.currentdir()
+  if Windows then dir = dir:lower() end -- canonical form
+  PWD = dir
 end
 
 local dir_stack = {}
 local push,pop = table.insert,table.remove
 
 function lake.chdir (path)
-    if not path then return end
-    if path == '!' or path == '<' then
-        lfs.chdir(pop(dir_stack))
-        log('restoring directory')
-    else
-        push(dir_stack,lfs.currentdir())
-        local res,err = lfs.chdir(path)
-        if not res then quit(err) end
-        log('changing directory '..path)
-    end
-    update_pwd()
+  if not path then return end
+  if path == '!' or path == '<' then
+    lfs.chdir(pop(dir_stack))
+    log('restoring directory')
+  else
+    push(dir_stack,lfs.currentdir())
+    local res,err = lfs.chdir(path)
+    if not res then quit(err) end
+    log('changing directory '..path)
+  end
+  update_pwd()
 end
 
 change_dir = lake.chdir
@@ -1831,50 +1837,50 @@ change_dir = lake.chdir
 local n_threads_override
 
 function lake.concurrent_jobs (nj, override)
-    if not found_threads then return nil,"no threading available; winapi/posix needed" end
-    if type(nj) ~= 'number' then return nil,"number of jobs must be a integer" end
-    if override or not n_threads_override then
-        n_threads = nj
-        n_threads_override = override
-        return true
-    else
-        return nil,"overriden by -j flag"
-    end
+  if not found_threads then return nil,"no threading available; winapi/posix needed" end
+  if type(nj) ~= 'number' then return nil,"number of jobs must be a integer" end
+  if override or not n_threads_override then
+    n_threads = nj
+    n_threads_override = override
+    return true
+  else
+    return nil,"overriden by -j flag"
+  end
 end
 
 function lake.cleantree()
-    for pat in list {'.spec','.d','.o','.obj','.so','.exe','.pdb','.pch','.gch','.lib','.exp','.dll','.a'} do
-        utils.remove(lake.expand_args('*',pat,true))
-    end
+  for pat in list {'.spec','.d','.o','.obj','.so','.exe','.pdb','.pch','.gch','.lib','.exp','.dll','.a'} do
+    utils.remove(lake.expand_args('*',pat,true))
+  end
 end
 
 local function safe_dofile (name)
-    if _DEBUG then
-        dofile(name)
-    else
-        local stat,err = pcall(dofile,name)
-        if not stat then
-            quit(err)
-        end
+  if _DEBUG then
+    dofile(name)
+  else
+    local stat,err = pcall(dofile,name)
+    if not stat then
+      quit(err)
     end
+  end
 end
 
 local lakefile
 local unsatisfied_needs = {}
 
 local function set_platform()
-    if not PLAT then
-        PLAT = BUILD_PLAT
-    end
-    WINDOWS = PLAT=='Windows'
-    if WINDOWS then
-        EXE_EXT = '.exe'
-        DLL_EXT = '.dll'
-    else
-        EXE_EXT = ''
-        DLL_EXT = '.so'
-    end
-    LOCAL_EXEC = choose (Windows,'','./')
+  if not PLAT then
+    PLAT = BUILD_PLAT
+  end
+  WINDOWS = PLAT=='Windows'
+  if WINDOWS then
+    EXE_EXT = '.exe'
+    DLL_EXT = '.dll'
+  else
+    EXE_EXT = ''
+    DLL_EXT = '.so'
+  end
+  LOCAL_EXEC = choose (Windows, '', './')
 end
 
 local function process_args()
@@ -2030,60 +2036,76 @@ local function process_args()
     end
     -- if we are called as a program, not as a library, then invoke the specified lakefile
     if arg[0] == 'lake' or arg[0]:find '[/\\]lake$' or arg[0]:find '[/\\]lake%.lua$' or arg[0]:find '[/\\]f?lake%.exe$' then
-        if use_lakefile then
-            local orig_lakefile = lakefile
-            lakefile = exists(lakefile or 'lakefile') or exists 'lakefile.lua'
-            if not lakefile then
-                quit("'%s' does not exist",orig_lakefile or 'lakefile')
-            end
-            safe_dofile(lakefile)
+      if use_lakefile then
+        local orig_lakefile = lakefile
+        lakefile = exists(lakefile or 'lakefile') or exists 'lakefile.lua'
+        if not lakefile then
+          quit("'%s' does not exist",orig_lakefile or 'lakefile')
         end
-        if next(unsatisfied_needs) then
-            local out = io.stdout
-            for package,vars in pairs(unsatisfied_needs) do
-                if write_needs then
-                    local needf = package..'.need.lua'
-                    out = io.open(needf,'w')
-                    log('writing '..needf)
-                end
-                out:write(('--- variables for package %s\n'):format(package))
-                for _,v in ipairs(vars) do out:write(v,'\n') end
-                out:write('----\n')
-                if write_needs then out:close() end
-            end
-            log (write_needs and "please edit the needs files!"
-                or "use -w to write skeleton needs files")
-            quit "unsatisfied needs"
+        safe_dofile(lakefile)
+      end
+      if next(unsatisfied_needs) then
+        local out = io.stdout
+        for package,vars in pairs(unsatisfied_needs) do
+          if write_needs then
+            local needf = package..'.need.lua'
+            out = io.open(needf,'w')
+            log('writing '..needf)
+          end
+          out:write(('--- variables for package %s\n'):format(package))
+          for _,v in ipairs(vars) do out:write(v,'\n') end
+          out:write('----\n')
+          if write_needs then out:close() end
         end
-        lake.go()
-        finalize()
+        log (write_needs and "please edit the needs files!"
+          or "use -w to write skeleton needs files")
+        quit "unsatisfied needs"
+      end
+      lake.go()
+      finalize()
     end
 end
 
 local hooks = {}
 
 function lake.on_exit (hook)
-    append(hooks,hook)
+  append(hooks,hook)
 end
 
 function finalize(reason)
-    for _,h in ipairs(hooks) do
-        pcall(h,reason)
-    end
+  for _, h in ipairs(hooks) do
+    pcall(h,reason)
+  end
 end
 
 -- recursively invoke lake at the given @path with the arguments @args
-function lake_(path,args)
+-- if args is given, run the new script in a new console session.
+-- otherwise run the script without creating a new session.
+function lake_(path, args)
+  if args then
     args = args or ''
-    exec('lake -d "'..path..'"  '..args,true)
+    exec('lake -d "'..path..'"  '..args, true)
+  else
+    local t = all_targets_list -- push targets
+    all_targets_list = {}
+    LAKELEVEL = LAKELEVEL and (LAKELEVEL + 1) or 1;
+    change_dir(path)
+    local lakefile = exists 'lakefile' or exists 'lakefile.lua'
+    if not lakefile then quit("'lakefile' does not exist") end;
+    safe_dofile(lakefile);
+    lake.go();
+    change_dir("<");
+    all_targets_list = t; -- pop targets
+    LAKELEVEL = LAKELEVEL - 1;
+  end
 end
 
-utils.make_callable(lake,lake_)
+utils.make_callable(lake, lake_)
 
 function lake.go()
 
     if #all_targets_list == 0 then
-        quit('no targets defined')
+        quit(LAKELEVEL and "done." or 'no targets defined')
     end
 
     for tt in list_(all_targets_list) do
@@ -2149,7 +2171,7 @@ function lake.go()
     -- execute the target, passing the rest of the parms passed to Lake, unless we were
     -- explicitly asked to clean up.
     if synth_target and not synthesize_clean then
-        local ok, res = lake.run(synth_target,arg,synth_args_index)
+        local ok, res = lake.run(synth_target, arg, synth_args_index)
         if not ok then -- pass on return code
             os.exit(res)
         end
@@ -2348,6 +2370,7 @@ function lake.set_flags(parms)
 
         wresource.compile = 'windres $(CFLAGS) $(INPUT) $(TARGET)'
         wresource.obj_ext='.o'
+        wresource.M32     = "-F pe-i386"
 
     else -- Microsoft command-line compiler
         MSVC = true
@@ -2504,14 +2527,14 @@ function lake.set_flags(parms)
     end
 end
 
-function lake.output_filter (lang,filter)
+function lake.output_filter (lang, filter)
     local old_filter = lang.filter
-    local filter = function(line,action)
+    local filter = function(line, action)
         if not action then
             if old_filter then line = old_filter(line) end
             if line then return filter(line) end
         else
-            if old_filter then old_filter(line,action) end
+            if old_filter then old_filter(line, action) end
         end
     end
     if istarget(lang) then
@@ -2522,12 +2545,12 @@ function lake.output_filter (lang,filter)
     end
 end
 
-function concat_arg(pre,arg,sep,base)
+function concat_arg(pre, arg, sep, base)
     return ' '..list.concat(deps_arg(arg,base),pre,sep)
 end
 lake.concat_arg = concat_arg
 
-local function _compile(name,compile_deps,lang)
+local function _compile(name, compile_deps, lang)
     local args = (type(name)=='table') and name or {}
     local cflags = ''
     if lang.init_flags then
@@ -2718,7 +2741,7 @@ end
 -- @doc [needs] unknown needs searched in this order:
 -- lake.needs.name, config vars (NAME_INCLUDE_DIR etc) and then pkg-config
 
-local function handle_unknown_need (name,args,static)
+local function handle_unknown_need(name,args,static)
     define_need(name,function()
         local ok,needs,nfun,needs_package
         local pack,sub = utils.split2(name,'%-')
@@ -2746,7 +2769,7 @@ local function handle_unknown_need (name,args,static)
     end)
 end
 
-local function append_to_field (t,name,value)
+local function append_to_field(t,name,value)
     if value then
         value = deps_arg(value)
         if not t[name] then
@@ -2815,7 +2838,7 @@ lake.define_pkg_need('gtk','gtk+-2.0')
 lake.define_pkg_need('gthread','gthread-2.0')
 
 define_need('windows',function()
-    return { libs = 'user32 kernel32 gdi32 ole32 advapi32 shell32 imm32  uuid comctl32 comdlg32'}
+    return { libs = 'kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 uuid oleaut32 ole32 comctl32'}
 end)
 
 define_need('unicode',function()
@@ -2911,7 +2934,6 @@ define_need('lua',update_lua_flags)
 
 ----- end of handling needs -----------
 
-
 local program_fields = {
     name=true, -- name of target (or first value of table)
     lua=true,  -- build against Lua libs
@@ -2931,7 +2953,8 @@ local program_fields = {
     dynamic=true, -- link dynamically against runtime (default true for GCC, override for MSVC)
     static=true, -- statically link this target
     headers=true, -- explicit list of header files (not usually needed with auto deps)
-    odir=true,output_directory=true, -- output directory; if true then use 'debug' or 'release'; if non-nil use it as output directory directly; prepends PREFIX
+    odir=true, -- output directory; if true then use 'debug' or 'release'; if non-nil use it as output directory directly; prepends PREFIX
+    --output_directory=true,
     src=true, -- src files, may contain directories or wildcards (extension deduced from lang or `ext`)
     exclude=true,	-- a similar list that should be excluded from the source list (e.g. if src='*')
     recurse=true, -- recursively find source files specified in src=wildcard
@@ -2939,7 +2962,8 @@ local program_fields = {
     defines=true, -- C preprocessor defines
     incdir=true, -- list of include directories
     flags=true,cflags=true,	 -- extra compile flags
-    cdir=true,compile_directory=true, -- run tool in this directory
+    cdir=true, -- run tool in this directory
+    --compile_directory=true,
     debug=true, -- override global default set by -g or DEBUG variable
     optimize=true, -- override global default set by OPTIMIZE variable
     strict=true, -- strict compilation of files
@@ -2971,7 +2995,7 @@ function check_options (args,fields,where)
     end
 end
 
-local function tail (t,istart)
+local function tail (t, istart)
     istart = istart or 2
     if #t < istart then return nil end
     return {select(istart,unpack(t))}
@@ -3006,10 +3030,10 @@ local function _program(ptype,name,deps,lang)
         append_table(args,args.args,true)
         --- the name can be the first element of the args table;
         --- the rest of the array will be considered as dependencies.
-        args.name = args.name or args[1]
+        if ptype ~= "group" then args.name = args.name or args[1] end;
         args.deps = args.deps or tail(args)
         args.debug = args.debug or DEBUG
-        args.cdir = args.cdir or args.compile_dir
+        --args.cdir = args.cdir or args.compile_dir
 
         if lang.args_handler then -- language can modify args
             lang:args_handler(args)
@@ -3113,166 +3137,174 @@ local function _program(ptype,name,deps,lang)
         args = {} -- _probably_ an error??
     end
     ---- setting output directory and ensuring that it exists ----
-    args.odir = args.odir or args.output_directory
+    --args.odir = args.odir or args.output_directory
     local odir = args.odir
     -- @compile setting 'odir' means we want a separate output directory. If a boolean,
     -- then we use prefix and debug/release.
     if odir then
-        if odir == true then
-            odir = PREFIX..choose(args.debug,'debug','release')
-        end
+      if odir == true then
+        odir = PREFIX..choose(args.debug, 'debug', 'release')
+      end
     end
     -- by default, setting base also sets the output directory,
     -- if not specified (args.odir = false will suppress this)
     if args.base then
-        if odir then
-            if not isabs(odir) then
-                odir = join(args.base,odir)
-            end
-        else
-            odir = args.base
+      if odir then
+        if not isabs(odir) then
+          odir = join(args.base,odir)
         end
-        args.odir = odir
+      else
+        odir = args.base
+      end
+      args.odir = odir
     end
     if odir and not isdir(odir) then path.mkdir(odir) end
 
     if args.def and WINDOWS then
-        args.def = join(args.base,args.def)
+      args.def = join(args.base,args.def)
     end
 
     -- we can now create a rule object to compile files of this type to object files,
     -- using the appropriate compile command.
     local pcr
     if not cr and lang.compile then
-        -- generally a good idea for Unix shared libraries
-        -- for OS X, -fPIC is on by default
-        if ptype == 'dll' and not (PLAT=='Windows' or PLAT=='Darwin') then
-            args.flags = concat(args.flags,'-fpic')
+      -- generally a good idea for Unix shared libraries
+      -- for OS X, -fPIC is on by default
+      if ptype == 'dll' and not (PLAT=='Windows' or PLAT=='Darwin') then
+        args.flags = concat(args.flags,'-fpic')
+      end
+      if args.precompiled_header then
+        -- this is a header which must be specially compiled with the correct
+        -- incantations
+        local precomp = args.precompiled_header
+        local oflags, odeps = args.flags, args.nodeps
+        if cpp_ch.make_compiled_header then
+          args.flags = concat(oflags,cpp_ch.make_compiled_header)
         end
-        if args.precompiled_header then
-            -- this is a header which must be specially compiled with the correct
-            -- incantations
-            local precomp = args.precompiled_header
-            local oflags, odeps = args.flags, args.nodeps
-            if cpp_ch.make_compiled_header then
-                args.flags = concat(oflags,cpp_ch.make_compiled_header)
-            end
-            args.nodeps = true
-            pcr = _compile(args,nil,cpp_ch)
-            pcr.output_dir = odir
-            pcr:add_target(precomp)
-            args.flags, args.nodeps = oflags, odeps
-            -- the source files are all compiled using this header
-            args.flags = concat(args.flags,cpp_ch.use_compiled_header..precomp)
-        end
-        cr = _compile(args,args.compile_deps,lang)
-        cr.output_dir = odir
+        args.nodeps = true
+        pcr = _compile(args,nil,cpp_ch)
+        pcr.output_dir = odir
+        pcr:add_target(precomp)
+        args.flags, args.nodeps = oflags, odeps
+        -- the source files are all compiled using this header
+        args.flags = concat(args.flags,cpp_ch.use_compiled_header..precomp)
+      end
+      cr = _compile(args,args.compile_deps,lang)
+      cr.output_dir = odir
     end
 
     -- can now generate a target for generating the executable or library, unless
     -- this is just a group of files
     local t
     if ptype ~= 'group' then
-        if not name then quit('no name provided for program') end
-        -- @deps we may have explicit dependencies, but we are always dependent on the files
-        -- generated by the compile rule.
-        if cr then
-            dependencies = choose(deps,depends(cr,deps),cr)
-        else
-            dependencies = deps
+      if not name then quit('no name provided for program') end
+      -- @deps we may have explicit dependencies, but we are always dependent on the files
+      -- generated by the compile rule.
+      if cr then
+        dependencies = choose(deps,depends(cr,deps),cr)
+      else
+        dependencies = deps
+      end
+      local tname
+      local btype = 'link'
+      local link_prefix = ''
+      if ptype == 'exe' then
+        tname = name..(lang.EXE_EXT or EXE_EXT)
+      elseif ptype == 'dll' then
+        tname = name..(lang.DLL_EXT or DLL_EXT)
+        libs = libs..' '..lang.LINK_DLL
+      elseif ptype == 'lib' then
+        local dir,fname = splitpath(name)
+        tname = lang.LIB_PREFIX..fname..lang.LIB_EXT
+        if dir ~= '' then
+          tname = join(dir,tname)
         end
-        local tname
-        local btype = 'link'
-        local link_prefix = ''
-        if ptype == 'exe' then
-            tname = name..(lang.EXE_EXT or EXE_EXT)
-        elseif ptype == 'dll' then
-            tname = name..(lang.DLL_EXT or DLL_EXT)
-            libs = libs..' '..lang.LINK_DLL
-        elseif ptype == 'lib' then
-            local dir,fname = splitpath(name)
-            tname = lang.LIB_PREFIX..fname..lang.LIB_EXT
-            if dir ~= '' then
-                tname = join(dir,tname)
-            end
-            btype = 'lib'
-        end
-        -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
-        if args.subsystem and PLAT=='Windows' then
-            libs = libs..' '..SUBSYSTEM..args.subsystem
-        end
-        local link_str = link_prefix..subst_all_but_basic(lang[btype])
-        -- @lang conditional post-build step if a language defines a function 'post_build'
-        -- that returns a string
-        if btype == 'LINK' and lang.post_build then
-            local post = lang.post_build(ptype,args)
-            if post then link_str = link_str..' && '..post end
-        end
-        local target = tname
-
-        -- @doc [target,odir] if the target looks like 'dir/name' then
-        -- we make sure that 'dir' does exist. Otherwise, if `odir` exists it
-        -- will be prepended.
-        local tpath,tname = splitpath(target)
-        if tname == '' then quit("target name cannot be empty, or a directory") end
-        if tpath == '' then
-            if odir then target = join(odir,target) end
-        else
-            path.mkdir(tpath)
-        end
-
-
-        t = new_target(target,dependencies,link_str,true)
-        t.name = name
-        t.libs = ptype ~= 'lib' and libs or args.libs
-        t.libflags = args.libflags
-        t.link_lang = lang
-        t.input = name..lang.obj_ext
-        t.lua = args.lua
-        t.llua = args.llua
-        t.debug = args.debug
-        t.ptype = ptype
-        t.basedir = args.base
-        t.args = args
-        if args.cdir then
-            t.dir = args.cdir
-            t.cdir = args.cdir
-        end
-        if cr then cr.parent = t end
-        t.compile_rule = cr
+        btype = 'lib'
+      end
+      -- @doc 'subsystem' with Windows, have to specify subsystem='windows' for pure GUI applications; ignored otherwise
+      if args.subsystem and PLAT == 'Windows' then
+        libs = libs..' '..SUBSYSTEM..args.subsystem
+      end
+      local link_str = link_prefix..subst_all_but_basic(lang[btype])
+      -- @lang conditional post-build step if a language defines a function 'post_build'
+      -- that returns a string
+      if btype == 'LINK' and lang.post_build then
+        local post = lang.post_build(ptype, args)
+        if post then link_str = link_str..' && '..post end
+      end
+      local target = tname
+      -- @doc [target,odir] if the target looks like 'dir/name' then
+      -- we make sure that 'dir' does exist. Otherwise, if `odir` exists it
+      -- will be prepended.
+      local tpath,tname = splitpath(target)
+      if tname == '' then quit("target name cannot be empty, or a directory") end
+      if tpath == '' then
+        if odir then target = join(odir, target) end
+      else
+        path.mkdir(tpath)
+      end
+      t = new_target(target, dependencies, link_str, true)
+      t.name = name
+      t.libs = ptype ~= 'lib' and libs or args.libs
+      t.libflags = args.libflags
+      t.link_lang = lang
+      t.input = name..lang.obj_ext
+      t.lua = args.lua
+      t.llua = args.llua
+      t.debug = args.debug
+      t.ptype = ptype
+      t.basedir = args.base
+      t.args = args
+      if args.cdir then
+        t.dir = args.cdir
+        t.cdir = args.cdir
+      end
+      if cr then cr.parent = t end
+      t.compile_rule = cr
     end
     if cr then
-        cr.filter = lang.filter
-        cr.stdout = lang.stdout
+      cr.filter = lang.filter
+      cr.stdout = lang.stdout
     end
     -- we have been given a list of source files, without extension
     if src then
-        local ext = args.ext or lang.ext
-        local root
-        -- hack: ext is '*' in a rule means that the output extension equals the input extension
-        if ext == '*' then ext = '' end
-        if args.recurse then
-            local first = type(src) == 'table' and src[1] or src
-            root = dirname(first,true)
-        end
-        src = expand_args(src,ext,args.recurse,args.base)
-        if except then
-            except = expand_args(except,ext,false,args.base)  -- args.recurse?
-            list.erase(src,except)
-        end
-        -- all these compile targets can depend on a precompiled header...
-        if pcr then pcr = pcr:get_targets() end
+      local ext = args.ext or lang.ext
+      local root
+      -- hack: ext is '*' in a rule means that the output extension equals the input extension
+      if ext == '*' then ext = '' end
+      if args.recurse then
+        --local first = type(src) == 'table' and src[1] or src
+        --root = dirname(first, true)
+        root = path.abs(args.base)
+      end
+      src = expand_args(src, ext, args.recurse, args.base)
+      if except then
+        except = expand_args(except,ext, false, args.base)  -- args.recurse?
+        list.erase(src, except)
+      end
+      -- all these compile targets can depend on a precompiled header...
+      if pcr then pcr = pcr:get_targets() end
 
-        if cr then
-            for f in list_(src) do cr:add_target(f,pcr,root) end
-        else
-            -- for languages where compilation occurs at 'link' stage (e.g. C#)
-            t.src = src
-            -- and update dependencies!!
-            target_add_deps(t,src)
+      if cr then
+        for f in list_(src) do cr:add_target(f, pcr, root) end
+        -- If a group has a given target name it is used as a prefix for the output file names.
+        -- This is usefull for compiling a source more than 1 time with different result files
+        -- and you want to store the results in the same folder.
+        if ptype == "group" and args[1] then
+          local patt = "([^%"..DIRSEP.."]+)$"
+          local repl = args[1].."_%1"
+          for i = 1, #cr.targets do
+            cr.targets[i].target = cr.targets[i].target:gsub(patt, repl)
+          end;
         end
+      else
+        -- for languages where compilation occurs at 'link' stage (e.g. C#)
+        t.src = src
+        -- and update dependencies!!
+        target_add_deps(t, src)
+      end
     end
-    return t,cr
+    return t, cr
 end
 
 function lake.add_proglib (fname,lang,kind)
@@ -3324,7 +3356,7 @@ end
 function default(...)
     if select('#',...) ~= 1 then quit("default() expects one argument!\nDid you use {}?") end
     local args = select(1,...)
-    new_target('default',args,'',true)
+    new_target('default', args, '', true)
 end
 
 target = {}
